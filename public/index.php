@@ -27,3 +27,4 @@ include __DIR__ . '/partials/header.php';
   <p>Next up: events & odds from TheOddsAPI, placing a bet, and a simple leaderboard.</p>
 </body>
 </html>
+<?php include __DIR__ . '/partials/footer.php'; ?>

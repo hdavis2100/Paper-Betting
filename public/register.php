@@ -73,3 +73,4 @@ include __DIR__ . '/partials/header.php';
   <p>Already have an account? <a href="/sportsbet/public/login.php">Log in</a></p>
 </body>
 </html>
+<?php include __DIR__ . '/partials/footer.php'; ?>

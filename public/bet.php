@@ -155,3 +155,4 @@ if ($eventId !== '') {
   <?php endif; ?>
 </body>
 </html>
+<?php include __DIR__ . '/partials/footer.php'; ?>

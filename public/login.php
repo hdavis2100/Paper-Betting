@@ -44,3 +44,4 @@ include __DIR__ . '/partials/header.php';
   <p>No account? <a href="/sportsbet/public/register.php">Create one</a></p>
 </body>
 </html>
+<?php include __DIR__ . '/partials/footer.php'; ?>

@@ -95,3 +95,4 @@ include __DIR__ . '/partials/header.php';
   <?php endif; ?>
 </body>
 </html>
+<?php include __DIR__ . '/partials/footer.php'; ?>
