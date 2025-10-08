@@ -41,10 +41,13 @@ $bestOddsStmt = $pdo->prepare(
   <h1>Upcoming events (<?= htmlspecialchars($sport) ?>)</h1>
   <nav>
     <a href="/sportsbet/public/index.php">Home</a> |
+    <a href="/sportsbet/public/my_bets.php">My Bets</a> |
     <a href="/sportsbet/public/events.php?sport=soccer_epl">EPL</a> |
     <a href="/sportsbet/public/events.php?sport=basketball_nba">NBA</a> |
-    <a href="/sportsbet/public/events.php?sport=americanfootball_nfl">NFL</a>
+    <a href="/sportsbet/public/events.php?sport=americanfootball_nfl">NFL</a> |
+    <a href="/sportsbet/public/logout.php">Logout</a>
   </nav>
+
   <p><a href="/sportsbet/public/events.php?sport=<?= urlencode($sport) ?>">Refresh</a></p>
 
   <?php if (!$events): ?>
@@ -72,8 +75,18 @@ $bestOddsStmt = $pdo->prepare(
         <tr>
           <td class="when"><?= htmlspecialchars($ev['commence_time']) ?></td>
           <td><?= htmlspecialchars($ev['home_team']) ?> vs <?= htmlspecialchars($ev['away_team']) ?></td>
-          <td><?= $homeBest ? htmlspecialchars(number_format((float)$homeBest, 2)) : '—' ?></td>
-          <td><?= $awayBest ? htmlspecialchars(number_format((float)$awayBest, 2)) : '—' ?></td>
+          <td>
+            <?= $homeBest ? htmlspecialchars(number_format((float)$homeBest, 2)) : '—' ?>
+            <?php if ($homeBest): ?>
+              <a href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($ev['home_team']) ?>">Bet Home</a>
+            <?php endif; ?>
+          </td>
+          <td>
+            <?= $awayBest ? htmlspecialchars(number_format((float)$awayBest, 2)) : '—' ?>
+            <?php if ($awayBest): ?>
+              <a href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($ev['away_team']) ?>">Bet Away</a>
+            <?php endif; ?>
+          </td>
         </tr>
       <?php endforeach; ?>
     </table>
