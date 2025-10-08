@@ -19,6 +19,7 @@ $balance = $wallet ? (float)$wallet['balance'] : 0.0;
   <nav>
     <a href="/sportsbet/public/index.php">Home</a> |
     <a href="/sportsbet/public/logout.php">Logout</a>
+    <a href="/sportsbet/public/events.php">Events</a>
   </nav>
 
   <hr>
