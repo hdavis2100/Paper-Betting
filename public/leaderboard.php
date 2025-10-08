@@ -31,6 +31,7 @@ ORDER BY w.balance DESC, net_profit DESC, bets_count DESC
 LIMIT 50
 ";
 $leaders = $pdo->query($sql)->fetchAll();
+include __DIR__ . '/partials/header.php';
 ?>
 <!doctype html>
 <html>

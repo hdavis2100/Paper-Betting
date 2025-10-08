@@ -16,6 +16,7 @@ $stmt = $pdo->prepare(
 );
 $stmt->execute([$userId]);
 $bets = $stmt->fetchAll();
+include __DIR__ . '/partials/header.php';
 ?>
 <!doctype html>
 <html>

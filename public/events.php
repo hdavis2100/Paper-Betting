@@ -24,6 +24,7 @@ $bestOddsStmt = $pdo->prepare(
    WHERE event_id = ? AND market = 'h2h'
    GROUP BY outcome"
 );
+include __DIR__ . '/partials/header.php';
 ?>
 <!doctype html>
 <html>

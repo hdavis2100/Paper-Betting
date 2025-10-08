@@ -8,6 +8,7 @@ $stmt = $pdo->prepare('SELECT balance FROM wallets WHERE user_id = ? LIMIT 1');
 $stmt->execute([current_user()['id']]);
 $wallet = $stmt->fetch();
 $balance = $wallet ? (float)$wallet['balance'] : 0.0;
+include __DIR__ . '/partials/header.php';
 ?>
 <!doctype html>
 <html>

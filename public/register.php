@@ -51,6 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   }
 }
+include __DIR__ . '/partials/header.php';
 ?>
 <!doctype html>
 <html>

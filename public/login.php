@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require __DIR__ . '/../src/bootstrap.php';
 
+
 $errors = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   $userOrEmail = trim($_POST['username_or_email'] ?? '');
@@ -23,6 +24,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   }
 }
+include __DIR__ . '/partials/header.php';
 ?>
 <!doctype html>
 <html>
