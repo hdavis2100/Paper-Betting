@@ -42,6 +42,7 @@ $bestOddsStmt = $pdo->prepare(
   <nav>
     <a href="/sportsbet/public/index.php">Home</a> |
     <a href="/sportsbet/public/my_bets.php">My Bets</a> |
+    <a href="/sportsbet/public/leaderboard.php">Leaderboard</a> |
     <a href="/sportsbet/public/events.php?sport=soccer_epl">EPL</a> |
     <a href="/sportsbet/public/events.php?sport=basketball_nba">NBA</a> |
     <a href="/sportsbet/public/events.php?sport=americanfootball_nfl">NFL</a> |
