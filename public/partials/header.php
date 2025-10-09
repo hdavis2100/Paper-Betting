@@ -43,6 +43,38 @@ if ($headerUser) {
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/leaderboard.php">Leaderboard</a></li>
         <?php endif; ?>
       </ul>
+        <form class="d-flex position-relative" role="search" action="/sportsbet/public/search.php" method="get">
+        <input class="form-control me-2" type="search" placeholder="Search teams..." id="search-box" name="q" autocomplete="off">
+        <ul id="suggestions" class="list-group position-absolute" style="top:100%;z-index:1000;width:100%;"></ul>
+        </form>
+
+        <script>
+        let timer;
+        const box = document.getElementById('search-box');
+        const list = document.getElementById('suggestions');
+        if (box) {
+        box.addEventListener('input', () => {
+            clearTimeout(timer);
+            const q = box.value.trim();
+            if (q.length < 2) { list.innerHTML = ''; return; }
+            timer = setTimeout(async () => {
+            const res = await fetch(`/sportsbet/public/search_suggest.php?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            list.innerHTML = data.map(r =>
+                `<li class="list-group-item">
+                <a href="/sportsbet/public/bet.php?event_id=${r.event_id}">
+                    ${r.home_team} vs ${r.away_team}
+                </a>
+                </li>`
+            ).join('');
+            }, 200);
+        });
+        document.addEventListener('click', e => {
+            if (!list.contains(e.target) && e.target !== box) list.innerHTML = '';
+        });
+        }
+        </script>
+
       <ul class="navbar-nav">
         <?php if ($headerUser): ?>
           <li class="nav-item">
