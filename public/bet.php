@@ -27,14 +27,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stmt->execute([$eventId, $outcome]);
     $od = $stmt->fetch();
 
+
     if (!$od) {
       $errors[] = 'Odds not found or outcome unavailable.';
     } else {
       $odds = (float)$od['price'];
       $potential = round($stake * $odds, 2);
       $userId = current_user()['id'];
-
+    
       try {
+        // verify event hasn't started yet
+        $check = $pdo->prepare("SELECT commence_time FROM events WHERE event_id = ? LIMIT 1");
+        $check->execute([$eventId]);
+        $row = $check->fetch();
+        if (!$row) {
+            $errors[] = 'Invalid event.';
+        } else {
+            $now = new DateTime('now', new DateTimeZone('UTC'));
+            $kickoff = new DateTime($row['commence_time'], new DateTimeZone('UTC'));
+            if ($kickoff <= $now) {
+                $errors[] = 'This event has already started. Betting is closed.';
+            }
+        }
+
         $pdo->beginTransaction();
 
         // lock wallet row
@@ -84,6 +99,15 @@ if ($eventId !== '') {
 
   if ($event) {
     $best = $pdo->prepare("SELECT outcome, MAX(price) AS p FROM odds WHERE event_id = ? AND market='h2h' GROUP BY outcome");
+        // Prevent betting on past or live events
+    $now = new DateTime('now', new DateTimeZone('UTC'));
+    $kickoff = new DateTime($event['commence_time'], new DateTimeZone('UTC'));
+    if ($kickoff <= $now) {
+        echo "<div class='msg err'>Betting is closed for this event (already started).</div>";
+        include __DIR__ . '/partials/footer.php';
+        exit;
+    }
+
     $best->execute([$eventId]);
     $m = [];
     foreach ($best->fetchAll() as $r) { $m[$r['outcome']] = $r['p']; }
