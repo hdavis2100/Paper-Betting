@@ -17,11 +17,7 @@ include __DIR__ . '/partials/header.php';
   <p>Logged in as <strong><?= htmlspecialchars(current_user()['username']) ?></strong></p>
   <p>Wallet balance: <strong><?= htmlspecialchars(number_format($balance, 2)) ?></strong></p>
 
-  <nav>
-    <a href="/sportsbet/public/index.php">Home</a> |
-    <a href="/sportsbet/public/logout.php">Logout</a>
-    <a href="/sportsbet/public/events.php">Events</a>
-  </nav>
+  
 
   <hr>
   <p>Next up: events & odds from TheOddsAPI, placing a bet, and a simple leaderboard.</p>

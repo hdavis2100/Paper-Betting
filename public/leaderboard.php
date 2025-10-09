@@ -45,13 +45,7 @@ include __DIR__ . '/partials/header.php';
   </style>
 </head>
 <body>
-  <nav>
-    <a href="/sportsbet/public/index.php">Home</a> |
-    <a href="/sportsbet/public/events.php">Events</a> |
-    <a href="/sportsbet/public/my_bets.php">My Bets</a> |
-    <a href="/sportsbet/public/leaderboard.php">Leaderboard</a> |
-    <a href="/sportsbet/public/logout.php">Logout</a>
-  </nav>
+  
 
   <h1>Leaderboard</h1>
   <?php if (!$leaders): ?>
