@@ -3,96 +3,113 @@ declare(strict_types=1);
 require __DIR__ . '/../src/bootstrap.php';
 require_login();
 
-/** Filter (optional later): ?sport=soccer_epl */
-$sport = isset($_GET['sport']) && $_GET['sport'] !== '' ? $_GET['sport'] : 'soccer_epl';
+$MAJOR_SPORTS = [
+  'boxing_boxing'               => 'Boxing',
+  'mma_mixed_martial_arts'      => 'UFC / MMA',
+  'basketball_nba'              => 'NBA',
+  'americanfootball_nfl'        => 'NFL',
+  'baseball_mlb'                => 'MLB',
+  'icehockey_nhl'               => 'NHL',
+];
 
-/** Upcoming events for this sport */
-$eventsStmt = $pdo->prepare(
-  "SELECT e.event_id, e.home_team, e.away_team, e.commence_time
-   FROM events e
-   WHERE e.sport_key = ? AND e.commence_time >= NOW()
-   ORDER BY e.commence_time ASC
-   LIMIT 100"
-);
-$eventsStmt->execute([$sport]);
-$events = $eventsStmt->fetchAll();
+// query params
+$selSport = $_GET['sport'] ?? 'all';               // 'all' or one of the keys above
+$limit    = isset($_GET['limit']) ? max(50, (int)$_GET['limit']) : 500;  // safety cap
 
-/** Helper: get best (max) h2h odds per outcome for a given event */
-$bestOddsStmt = $pdo->prepare(
-  "SELECT outcome, MAX(price) AS best_price
-   FROM odds
-   WHERE event_id = ? AND market = 'h2h'
-   GROUP BY outcome"
-);
+// build SQL
+$params = [];
+if ($selSport !== 'all' && isset($MAJOR_SPORTS[$selSport])) {
+  $sql = "
+    SELECT e.event_id, e.sport_key, e.home_team, e.away_team, e.commence_time
+    FROM events e
+    WHERE e.sport_key = :sport
+      AND e.commence_time >= NOW()
+    ORDER BY e.commence_time ASC
+    LIMIT :lim
+  ";
+  $stmt = $pdo->prepare($sql);
+  $stmt->bindValue(':sport', $selSport, PDO::PARAM_STR);
+  $stmt->bindValue(':lim', $limit, PDO::PARAM_INT);
+  $stmt->execute();
+} else {
+  // all major sports
+  $keys = array_keys($MAJOR_SPORTS);
+  $place = implode(',', array_fill(0, count($keys), '?'));
+  $sql = "
+    SELECT e.event_id, e.sport_key, e.home_team, e.away_team, e.commence_time
+    FROM events e
+    WHERE e.sport_key IN ($place)
+      AND e.commence_time >= NOW()
+    ORDER BY e.commence_time ASC
+    LIMIT ?
+  ";
+  $stmt = $pdo->prepare($sql);
+  // bind IN list positionally + trailing LIMIT
+  $i = 1;
+  foreach ($keys as $k) { $stmt->bindValue($i++, $k, PDO::PARAM_STR); }
+  $stmt->bindValue($i, $limit, PDO::PARAM_INT);
+  $stmt->execute();
+}
+
+$rows = $stmt->fetchAll();
+
 include __DIR__ . '/partials/header.php';
 ?>
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Events — <?= htmlspecialchars($sport) ?></title>
-  <style>
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #ccc; padding: 6px 8px; }
-    th { background: #f5f5f5; text-align: left; }
-    .when { white-space: nowrap; }
-  </style>
-</head>
-<body>
-  <h1>Upcoming events (<?= htmlspecialchars($sport) ?>)</h1>
-  <nav>
-    <a href="/sportsbet/public/index.php">Home</a> |
-    <a href="/sportsbet/public/my_bets.php">My Bets</a> |
-    <a href="/sportsbet/public/leaderboard.php">Leaderboard</a> |
-    <a href="/sportsbet/public/events.php?sport=soccer_epl">EPL</a> |
-    <a href="/sportsbet/public/events.php?sport=basketball_nba">NBA</a> |
-    <a href="/sportsbet/public/events.php?sport=americanfootball_nfl">NFL</a> |
-    <a href="/sportsbet/public/logout.php">Logout</a>
-  </nav>
+<div class="container mt-3">
+  <div class="d-flex align-items-center justify-content-between">
+    <h1 class="h4 mb-0">Major Events (Upcoming)</h1>
+    <div class="text-muted small">Showing <?= count($rows) ?> event(s)</div>
+  </div>
 
-  <p><a href="/sportsbet/public/events.php?sport=<?= urlencode($sport) ?>">Refresh</a></p>
+  <!-- Sport filter pills -->
+  <div class="mt-2 mb-3">
+    <a class="btn btn-sm <?= $selSport==='all' ? 'btn-primary' : 'btn-outline-secondary' ?>"
+       href="/sportsbet/public/events.php?sport=all">All</a>
+    <?php foreach ($MAJOR_SPORTS as $k => $label): ?>
+      <a class="btn btn-sm <?= $selSport===$k ? 'btn-primary' : 'btn-outline-secondary' ?>"
+         href="/sportsbet/public/events.php?sport=<?= urlencode($k) ?>">
+        <?= htmlspecialchars($label) ?>
+      </a>
+    <?php endforeach; ?>
+  </div>
 
-  <?php if (!$events): ?>
-    <p>No events found yet. Run the fetcher:<br>
-      <code>php /var/www/html/sportsbet/src/fetch_odds.php</code>
-    </p>
+  <?php if (!$rows): ?>
+    <div class="alert alert-info">No upcoming events found for this selection.</div>
   <?php else: ?>
-    <table>
-      <tr>
-        <th class="when">Commence</th>
-        <th>Match</th>
-        <th>Best H2H — Home</th>
-        <th>Best H2H — Away</th>
-      </tr>
-      <?php foreach ($events as $ev): ?>
-        <?php
-          $bestOddsStmt->execute([$ev['event_id']]);
-          $rows = $bestOddsStmt->fetchAll();
-          $best = [];
-          foreach ($rows as $r) { $best[$r['outcome']] = $r['best_price']; }
-
-          $homeBest = $best[$ev['home_team']] ?? null;
-          $awayBest = $best[$ev['away_team']] ?? null;
-        ?>
-        <tr>
-          <td class="when"><?= htmlspecialchars($ev['commence_time']) ?></td>
-          <td><?= htmlspecialchars($ev['home_team']) ?> vs <?= htmlspecialchars($ev['away_team']) ?></td>
-          <td>
-            <?= $homeBest ? htmlspecialchars(number_format((float)$homeBest, 2)) : '—' ?>
-            <?php if ($homeBest): ?>
-              <a href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($ev['home_team']) ?>">Bet Home</a>
-            <?php endif; ?>
-          </td>
-          <td>
-            <?= $awayBest ? htmlspecialchars(number_format((float)$awayBest, 2)) : '—' ?>
-            <?php if ($awayBest): ?>
-              <a href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($ev['away_team']) ?>">Bet Away</a>
-            <?php endif; ?>
-          </td>
-        </tr>
-      <?php endforeach; ?>
-    </table>
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        <table class="table mb-0 align-middle">
+          <thead>
+            <tr>
+              <th style="width: 180px;">Commence (UTC)</th>
+              <th>Match / Fight</th>
+              <th style="width: 140px;">Sport</th>
+              <th style="width: 120px;"></th>
+            </tr>
+          </thead>
+          <tbody>
+          <?php foreach ($rows as $r): ?>
+            <tr>
+              <td><?= htmlspecialchars($r['commence_time']) ?></td>
+              <td><?= htmlspecialchars($r['home_team']) ?> vs <?= htmlspecialchars($r['away_team']) ?></td>
+              <td><?= htmlspecialchars($MAJOR_SPORTS[$r['sport_key']] ?? $r['sport_key']) ?></td>
+              <td>
+                <a class="btn btn-sm btn-outline-primary"
+                   href="/sportsbet/public/bet.php?event_id=<?= urlencode($r['event_id']) ?>">
+                  Bet
+                </a>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
   <?php endif; ?>
-</body>
-</html>
+
+  <div class="mt-2 small text-muted">
+    Tip: add <code>&limit=1000</code> to the URL if you want a bigger list.
+  </div>
+</div>
 <?php include __DIR__ . '/partials/footer.php'; ?>
+
