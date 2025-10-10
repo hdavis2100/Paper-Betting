@@ -52,8 +52,8 @@ $totalSettled = 0;
 foreach ($bySport as $sport => $events) {
   // 2) Fetch recent scores for this sport
   $scoresUrl = sprintf(
-    'https://api.the-odds-api.com/v4/sports/%s/scores/?daysFrom=%d&apiKey=%s',
-    urlencode($sport), DAYS_FROM, urlencode($apiKey)
+    'https://api.the-odds-api.com/v4/sports/%s/scores?daysFrom=%d&dateFormat=iso&apiKey=%s',
+    rawurlencode($sport), DAYS_FROM, urlencode($apiKey)
   );
 
   $ch = curl_init($scoresUrl);
@@ -99,18 +99,42 @@ foreach ($bySport as $sport => $events) {
     $scoresArr = $info['scores'] ?? [];
 
     $winner = null;
-    if ($completed && is_array($scoresArr) && count($scoresArr) >= 2) {
-      // Scores typically like: [ {name: team, score: "1"}, {name: team, score: "2"} ]
-      $s1 = $scoresArr[0] ?? null;
-      $s2 = $scoresArr[1] ?? null;
-      $name1 = is_array($s1) ? ($s1['name'] ?? '') : '';
-      $name2 = is_array($s2) ? ($s2['name'] ?? '') : '';
-      $sc1 = is_array($s1) ? (float)($s1['score'] ?? 0) : 0.0;
-      $sc2 = is_array($s2) ? (float)($s2['score'] ?? 0) : 0.0;
+    if ($completed) {
+      $homeScore = null;
+      $awayScore = null;
 
-      if ($sc1 > $sc2) $winner = $name1;
-      elseif ($sc2 > $sc1) $winner = $name2;
-      else $winner = 'TIE';
+      if (is_array($scoresArr)) {
+        foreach ($scoresArr as $row) {
+          if (!is_array($row)) continue;
+          $name = $row['name'] ?? '';
+          if ($name === '') continue;
+          $scoreVal = isset($row['score']) ? (float)$row['score'] : null;
+          if ($scoreVal === null) continue;
+
+          if (strcasecmp($name, $home) === 0) {
+            $homeScore = $scoreVal;
+          } elseif (strcasecmp($name, $away) === 0) {
+            $awayScore = $scoreVal;
+          }
+        }
+      }
+
+      if ($homeScore === null && isset($info['home_score'])) {
+        $homeScore = (float)$info['home_score'];
+      }
+      if ($awayScore === null && isset($info['away_score'])) {
+        $awayScore = (float)$info['away_score'];
+      }
+
+      if ($homeScore !== null && $awayScore !== null) {
+        if ($homeScore > $awayScore) {
+          $winner = $home;
+        } elseif ($awayScore > $homeScore) {
+          $winner = $away;
+        } else {
+          $winner = 'TIE';
+        }
+      }
     }
 
     // Settle all pending bets for this event
