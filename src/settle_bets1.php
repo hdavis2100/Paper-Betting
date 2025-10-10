@@ -123,9 +123,14 @@ $totalSettled = 0;
 
 foreach ($bySport as $sport => $events) {
   // 2) Fetch recent scores for this sport
+  $effectiveDaysFrom = max(1, min($daysFrom, 3));
+  if ($effectiveDaysFrom !== $daysFrom && !$dumpScores) {
+    fwrite(STDERR, "[{$sport}] daysFrom clamped to {$effectiveDaysFrom} to satisfy API limits.\n");
+  }
+
   $scoresUrl = sprintf(
     'https://api.the-odds-api.com/v4/sports/%s/scores?daysFrom=%d&dateFormat=iso&apiKey=%s',
-    rawurlencode($sport), $daysFrom, urlencode($apiKey)
+    rawurlencode($sport), $effectiveDaysFrom, urlencode($apiKey)
   );
 
   $ch = curl_init($scoresUrl);
@@ -136,7 +141,11 @@ foreach ($bySport as $sport => $events) {
   curl_close($ch);
 
   if ($resp === false || $code !== 200) {
-    fwrite(STDERR, "[{$sport}] Scores fetch failed: HTTP {$code} {$err}\n");
+    $bodySnippet = '';
+    if (is_string($resp) && $resp !== '') {
+      $bodySnippet = ' Body: ' . substr(trim($resp), 0, 300);
+    }
+    fwrite(STDERR, "[{$sport}] Scores fetch failed: HTTP {$code} {$err}{$bodySnippet}\n");
     continue;
   }
 
