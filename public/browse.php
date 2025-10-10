@@ -15,7 +15,7 @@ $eventsStmt = $pdo->prepare("
   SELECT e.event_id, e.home_team, e.away_team, e.commence_time
   FROM events e
   WHERE e.sport_key = :sport
-    AND e.commence_time >= NOW()
+    AND e.commence_time >= UTC_TIMESTAMP()
   ORDER BY e.commence_time ASC
   LIMIT 200
 ");
@@ -53,7 +53,7 @@ include __DIR__ . '/partials/header.php';
       <table class="table mb-0">
         <thead>
           <tr>
-            <th style="width: 180px;">Commence</th>
+            <th style="width: 180px;">Commence (ET)</th>
             <th>Match</th>
             <?php if ($market === 'h2h'): ?>
               <th>Home best</th>
@@ -85,13 +85,13 @@ include __DIR__ . '/partials/header.php';
           }
         ?>
           <tr>
-            <td><?= htmlspecialchars($ev['commence_time']) ?></td>
+            <td><?= htmlspecialchars(format_est_datetime($ev['commence_time'])) ?></td>
             <td><?= htmlspecialchars($ev['home_team']) ?> vs <?= htmlspecialchars($ev['away_team']) ?></td>
 
             <?php if ($market === 'h2h'): ?>
               <td>
                 <?php if ($bestHome): ?>
-                  <?= htmlspecialchars(number_format((float)$bestHome['price'], 2)) ?>
+                  <?= htmlspecialchars(format_american_odds((float)$bestHome['price'])) ?>
                   <small class="text-muted">(<?= htmlspecialchars($bestHome['bookmaker']) ?>)</small>
                   <a class="btn btn-sm btn-outline-primary ms-2"
                      href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($ev['home_team']) ?>">
@@ -101,7 +101,7 @@ include __DIR__ . '/partials/header.php';
               </td>
               <td>
                 <?php if ($bestAway): ?>
-                  <?= htmlspecialchars(number_format((float)$bestAway['price'], 2)) ?>
+                  <?= htmlspecialchars(format_american_odds((float)$bestAway['price'])) ?>
                   <small class="text-muted">(<?= htmlspecialchars($bestAway['bookmaker']) ?>)</small>
                   <a class="btn btn-sm btn-outline-primary ms-2"
                      href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($ev['away_team']) ?>">
@@ -115,7 +115,7 @@ include __DIR__ . '/partials/header.php';
                   <ul class="mb-0">
                     <?php foreach ($top as $t): ?>
                       <li>
-                        <?= htmlspecialchars($t['outcome']) ?> — <?= htmlspecialchars(number_format((float)$t['price'], 2)) ?>
+                        <?= htmlspecialchars($t['outcome']) ?> — <?= htmlspecialchars(format_american_odds((float)$t['price'])) ?>
                         <small class="text-muted">(<?= htmlspecialchars($t['bookmaker']) ?>)</small>
                         <a class="btn btn-sm btn-outline-primary ms-2"
                            href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($t['outcome']) ?>">
