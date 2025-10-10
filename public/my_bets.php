@@ -52,7 +52,7 @@ include __DIR__ . '/partials/header.php';
           <td><?= htmlspecialchars($b['home_team']) ?> vs <?= htmlspecialchars($b['away_team']) ?><br>
               <small><?= htmlspecialchars($b['commence_time']) ?></small></td>
           <td><?= htmlspecialchars($b['outcome']) ?></td>
-          <td><?= htmlspecialchars(number_format((float)$b['odds'], 2)) ?></td>
+          <td><?= htmlspecialchars(format_american_odds((float)$b['odds'])) ?></td>
           <td><?= htmlspecialchars(number_format((float)$b['stake'], 2)) ?></td>
           <td><?= htmlspecialchars(number_format((float)$b['potential_return'], 2)) ?></td>
           <td><?= htmlspecialchars($b['status']) ?></td>

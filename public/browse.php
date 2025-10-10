@@ -91,7 +91,7 @@ include __DIR__ . '/partials/header.php';
             <?php if ($market === 'h2h'): ?>
               <td>
                 <?php if ($bestHome): ?>
-                  <?= htmlspecialchars(number_format((float)$bestHome['price'], 2)) ?>
+                  <?= htmlspecialchars(format_american_odds((float)$bestHome['price'])) ?>
                   <small class="text-muted">(<?= htmlspecialchars($bestHome['bookmaker']) ?>)</small>
                   <a class="btn btn-sm btn-outline-primary ms-2"
                      href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($ev['home_team']) ?>">
@@ -101,7 +101,7 @@ include __DIR__ . '/partials/header.php';
               </td>
               <td>
                 <?php if ($bestAway): ?>
-                  <?= htmlspecialchars(number_format((float)$bestAway['price'], 2)) ?>
+                  <?= htmlspecialchars(format_american_odds((float)$bestAway['price'])) ?>
                   <small class="text-muted">(<?= htmlspecialchars($bestAway['bookmaker']) ?>)</small>
                   <a class="btn btn-sm btn-outline-primary ms-2"
                      href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($ev['away_team']) ?>">
@@ -115,7 +115,7 @@ include __DIR__ . '/partials/header.php';
                   <ul class="mb-0">
                     <?php foreach ($top as $t): ?>
                       <li>
-                        <?= htmlspecialchars($t['outcome']) ?> — <?= htmlspecialchars(number_format((float)$t['price'], 2)) ?>
+                        <?= htmlspecialchars($t['outcome']) ?> — <?= htmlspecialchars(format_american_odds((float)$t['price'])) ?>
                         <small class="text-muted">(<?= htmlspecialchars($t['bookmaker']) ?>)</small>
                         <a class="btn btn-sm btn-outline-primary ms-2"
                            href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($t['outcome']) ?>">

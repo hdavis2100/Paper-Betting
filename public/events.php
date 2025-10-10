@@ -14,7 +14,9 @@ $MAJOR_SPORTS = [
 
 // query params
 $selSport = $_GET['sport'] ?? 'all';               // 'all' or one of the keys above
-$limit    = isset($_GET['limit']) ? max(50, (int)$_GET['limit']) : 500;  // safety cap
+$limitParam = isset($_GET['limit']) ? (int)$_GET['limit'] : 500;
+$limitParam = max(1, $limitParam);                 // floor to a positive number
+$limit    = min(500, $limitParam);                 // enforce safety cap
 
 // build SQL
 $params = [];
