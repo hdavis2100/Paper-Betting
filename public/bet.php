@@ -41,13 +41,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $check->execute([$eventId]);
         $row = $check->fetch();
         if (!$row) {
-            $errors[] = 'Invalid event.';
-        } else {
-            $now = new DateTime('now', new DateTimeZone('UTC'));
-            $kickoff = new DateTime($row['commence_time'], new DateTimeZone('UTC'));
-            if ($kickoff <= $now) {
-                $errors[] = 'This event has already started. Betting is closed.';
-            }
+          throw new RuntimeException('Invalid event.');
+        }
+
+        $now = new DateTime('now', new DateTimeZone('UTC'));
+        $kickoff = new DateTime($row['commence_time'], new DateTimeZone('UTC'));
+        if ($kickoff <= $now) {
+          throw new RuntimeException('This event has already started. Betting is closed.');
         }
 
         $pdo->beginTransaction();
@@ -76,7 +76,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->commit();
         $success = "Bet placed! Potential return: " . number_format($potential, 2);
       } catch (Throwable $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+          $pdo->rollBack();
+        }
         $errors[] = $e->getMessage();
       }
     }
