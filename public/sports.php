@@ -6,7 +6,7 @@ require_login();
 // Upcoming counts per sport
 $sql = "
   SELECT s.sport_key, s.title,
-         COALESCE(SUM(e.commence_time >= NOW()), 0) AS upcoming_count
+         COALESCE(SUM(e.commence_time >= UTC_TIMESTAMP()), 0) AS upcoming_count
   FROM sports s
   LEFT JOIN events e ON e.sport_key = s.sport_key
   GROUP BY s.sport_key, s.title
