@@ -20,19 +20,91 @@ if ($apiKey === '') {
 }
 
 /** How many days back to fetch scores for (covers late finishes). */
-const DAYS_FROM = 7;
+const DAYS_FROM_DEFAULT = 7;
+
+/**
+ * Optional CLI flags:
+ *   --sport=SPORT_KEY          Limit to a single sport.
+ *   --event=EVENT_ID           Limit to one event.
+ *   --days-from=N              Override the score lookback window.
+ *   --include-upcoming         Inspect bets even if the event has not started.
+ *   --dump-scores              Print the fetched API score summary for matched events.
+ */
+$cliOpts = getopt('', [
+  'sport::',
+  'event::',
+  'days-from::',
+  'include-upcoming',
+  'dump-scores',
+]);
+
+$sportFilter = $cliOpts['sport'] ?? null;
+$eventFilter = $cliOpts['event'] ?? null;
+$includeUpcoming = array_key_exists('include-upcoming', $cliOpts);
+$dumpScores = array_key_exists('dump-scores', $cliOpts);
+
+$daysFrom = DAYS_FROM_DEFAULT;
+if (isset($cliOpts['days-from'])) {
+  $override = (int)$cliOpts['days-from'];
+  if ($override >= 0) {
+    $daysFrom = $override;
+  }
+}
 
 /** 1) Gather unsettled events grouped by sport */
+$conditions = ["b.status = 'pending'"];
+$params = [];
+if (!$includeUpcoming) {
+  $conditions[] = 'e.commence_time < UTC_TIMESTAMP()';
+}
+if ($sportFilter !== null && $sportFilter !== '') {
+  $conditions[] = 'e.sport_key = ?';
+  $params[] = $sportFilter;
+}
+if ($eventFilter !== null && $eventFilter !== '') {
+  $conditions[] = 'e.event_id = ?';
+  $params[] = $eventFilter;
+}
+
 $sql = "
-  SELECT DISTINCT e.sport_key, e.event_id, e.home_team, e.away_team
+  SELECT DISTINCT e.sport_key, e.event_id, e.home_team, e.away_team, e.commence_time
   FROM bets b
   JOIN events e ON e.event_id = b.event_id
-  WHERE b.status = 'pending'
-    AND e.commence_time < NOW()
-";
-$rows = $pdo->query($sql)->fetchAll();
+  WHERE " . implode(' AND ', $conditions) . '
+  ORDER BY e.commence_time ASC
+';
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$rows = $stmt->fetchAll();
 if (!$rows) {
-  echo "Nothing to settle.\n";
+  $upcomingSql = "
+    SELECT COUNT(*)
+    FROM bets b
+    JOIN events e ON e.event_id = b.event_id
+    WHERE b.status = 'pending'
+      AND e.commence_time >= UTC_TIMESTAMP()
+  ";
+  $upcomingParams = [];
+  if ($sportFilter !== null && $sportFilter !== '') {
+    $upcomingSql .= ' AND e.sport_key = ?';
+    $upcomingParams[] = $sportFilter;
+  }
+  if ($eventFilter !== null && $eventFilter !== '') {
+    $upcomingSql .= ' AND e.event_id = ?';
+    $upcomingParams[] = $eventFilter;
+  }
+
+  $upcomingStmt = $pdo->prepare($upcomingSql);
+  $upcomingStmt->execute($upcomingParams);
+  $upcoming = (int)$upcomingStmt->fetchColumn();
+
+  if ($upcoming > 0 && !$includeUpcoming) {
+    echo "Nothing to settle (pending bets exist but their events have not started yet).\n";
+    echo "Re-run with --include-upcoming to inspect them or verify commence_time values.\n";
+  } else {
+    echo "Nothing to settle for the provided filters.\n";
+  }
   exit(0);
 }
 
@@ -52,8 +124,8 @@ $totalSettled = 0;
 foreach ($bySport as $sport => $events) {
   // 2) Fetch recent scores for this sport
   $scoresUrl = sprintf(
-    'https://api.the-odds-api.com/v4/sports/%s/scores/?daysFrom=%d&apiKey=%s',
-    urlencode($sport), DAYS_FROM, urlencode($apiKey)
+    'https://api.the-odds-api.com/v4/sports/%s/scores?daysFrom=%d&dateFormat=iso&apiKey=%s',
+    rawurlencode($sport), $daysFrom, urlencode($apiKey)
   );
 
   $ch = curl_init($scoresUrl);
@@ -88,29 +160,71 @@ foreach ($bySport as $sport => $events) {
     $away = $ev['away_team'];
 
     if (!isset($scoreMap[$eventId])) {
+      if ($dumpScores) {
+        echo "[{$sport}] Event {$eventId} not returned by scores API.\n";
+      }
       // No result yet; skip until next run
       continue;
     }
 
     $info = $scoreMap[$eventId];
 
+    if ($dumpScores) {
+      $homePrint = $info['home_score'] ?? 'n/a';
+      $awayPrint = $info['away_score'] ?? 'n/a';
+      $state = ($info['completed'] ?? false) ? 'completed' : 'in-progress';
+      printf(
+        "[scores] %s | %s vs %s | %s | home=%s away=%s\n",
+        $eventId,
+        $home,
+        $away,
+        $state,
+        (string)$homePrint,
+        (string)$awayPrint
+      );
+    }
+
     // Try to extract winner from scores
     $completed = (bool)($info['completed'] ?? false);
     $scoresArr = $info['scores'] ?? [];
 
     $winner = null;
-    if ($completed && is_array($scoresArr) && count($scoresArr) >= 2) {
-      // Scores typically like: [ {name: team, score: "1"}, {name: team, score: "2"} ]
-      $s1 = $scoresArr[0] ?? null;
-      $s2 = $scoresArr[1] ?? null;
-      $name1 = is_array($s1) ? ($s1['name'] ?? '') : '';
-      $name2 = is_array($s2) ? ($s2['name'] ?? '') : '';
-      $sc1 = is_array($s1) ? (float)($s1['score'] ?? 0) : 0.0;
-      $sc2 = is_array($s2) ? (float)($s2['score'] ?? 0) : 0.0;
+    if ($completed) {
+      $homeScore = null;
+      $awayScore = null;
 
-      if ($sc1 > $sc2) $winner = $name1;
-      elseif ($sc2 > $sc1) $winner = $name2;
-      else $winner = 'TIE';
+      if (is_array($scoresArr)) {
+        foreach ($scoresArr as $row) {
+          if (!is_array($row)) continue;
+          $name = $row['name'] ?? '';
+          if ($name === '') continue;
+          $scoreVal = isset($row['score']) ? (float)$row['score'] : null;
+          if ($scoreVal === null) continue;
+
+          if (strcasecmp($name, $home) === 0) {
+            $homeScore = $scoreVal;
+          } elseif (strcasecmp($name, $away) === 0) {
+            $awayScore = $scoreVal;
+          }
+        }
+      }
+
+      if ($homeScore === null && isset($info['home_score'])) {
+        $homeScore = (float)$info['home_score'];
+      }
+      if ($awayScore === null && isset($info['away_score'])) {
+        $awayScore = (float)$info['away_score'];
+      }
+
+      if ($homeScore !== null && $awayScore !== null) {
+        if ($homeScore > $awayScore) {
+          $winner = $home;
+        } elseif ($awayScore > $homeScore) {
+          $winner = $away;
+        } else {
+          $winner = 'TIE';
+        }
+      }
     }
 
     // Settle all pending bets for this event
