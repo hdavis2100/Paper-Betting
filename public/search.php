@@ -12,6 +12,7 @@ if ($q !== '' && mb_strlen($q) >= 2) {
            MATCH(e.home_team, e.away_team) AGAINST(:q IN NATURAL LANGUAGE MODE) AS score
     FROM events e
     WHERE MATCH(e.home_team, e.away_team) AGAINST(:q IN NATURAL LANGUAGE MODE)
+      AND e.commence_time >= UTC_TIMESTAMP()
     ORDER BY score DESC, e.commence_time ASC
     LIMIT 100
   ");
@@ -32,11 +33,11 @@ include __DIR__ . '/partials/header.php';
     <div class="card shadow-sm">
       <div class="card-body p-0">
         <table class="table mb-0">
-          <thead><tr><th>Commence</th><th>Match</th><th>Sport</th><th></th></tr></thead>
+          <thead><tr><th>Commence (ET)</th><th>Match</th><th>Sport</th><th></th></tr></thead>
           <tbody>
           <?php foreach ($results as $r): ?>
             <tr>
-              <td><?= htmlspecialchars($r['commence_time']) ?></td>
+              <td><?= htmlspecialchars(format_est_datetime($r['commence_time'])) ?></td>
               <td><?= htmlspecialchars($r['home_team']) ?> vs <?= htmlspecialchars($r['away_team']) ?></td>
               <td><?= htmlspecialchars($r['sport_key']) ?></td>
               <td><a class="btn btn-sm btn-outline-primary"

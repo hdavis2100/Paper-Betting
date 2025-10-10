@@ -38,7 +38,7 @@ include __DIR__ . '/partials/header.php';
   <?php else: ?>
     <table>
       <tr>
-        <th>Placed</th>
+        <th>Placed (ET)</th>
         <th>Match</th>
         <th>Outcome</th>
         <th>Odds</th>
@@ -48,11 +48,11 @@ include __DIR__ . '/partials/header.php';
       </tr>
       <?php foreach ($bets as $b): ?>
         <tr>
-          <td><?= htmlspecialchars($b['placed_at']) ?></td>
+          <td><?= htmlspecialchars(format_est_datetime($b['placed_at'])) ?></td>
           <td><?= htmlspecialchars($b['home_team']) ?> vs <?= htmlspecialchars($b['away_team']) ?><br>
-              <small><?= htmlspecialchars($b['commence_time']) ?></small></td>
+              <small><?= htmlspecialchars(format_est_datetime($b['commence_time'])) ?></small></td>
           <td><?= htmlspecialchars($b['outcome']) ?></td>
-          <td><?= htmlspecialchars(number_format((float)$b['odds'], 2)) ?></td>
+          <td><?= htmlspecialchars(format_american_odds((float)$b['odds'])) ?></td>
           <td><?= htmlspecialchars(number_format((float)$b['stake'], 2)) ?></td>
           <td><?= htmlspecialchars(number_format((float)$b['potential_return'], 2)) ?></td>
           <td><?= htmlspecialchars($b['status']) ?></td>

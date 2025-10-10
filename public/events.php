@@ -25,7 +25,7 @@ if ($selSport !== 'all' && isset($MAJOR_SPORTS[$selSport])) {
     SELECT e.event_id, e.sport_key, e.home_team, e.away_team, e.commence_time
     FROM events e
     WHERE e.sport_key = :sport
-      AND e.commence_time >= NOW()
+      AND e.commence_time >= UTC_TIMESTAMP()
     ORDER BY e.commence_time ASC
     LIMIT :lim
   ";
@@ -41,7 +41,7 @@ if ($selSport !== 'all' && isset($MAJOR_SPORTS[$selSport])) {
     SELECT e.event_id, e.sport_key, e.home_team, e.away_team, e.commence_time
     FROM events e
     WHERE e.sport_key IN ($place)
-      AND e.commence_time >= NOW()
+      AND e.commence_time >= UTC_TIMESTAMP()
     ORDER BY e.commence_time ASC
     LIMIT ?
   ";
@@ -83,7 +83,7 @@ include __DIR__ . '/partials/header.php';
         <table class="table mb-0 align-middle">
           <thead>
             <tr>
-              <th style="width: 180px;">Commence (UTC)</th>
+              <th style="width: 180px;">Commence (ET)</th>
               <th>Match / Fight</th>
               <th style="width: 140px;">Sport</th>
               <th style="width: 120px;"></th>
@@ -92,7 +92,7 @@ include __DIR__ . '/partials/header.php';
           <tbody>
           <?php foreach ($rows as $r): ?>
             <tr>
-              <td><?= htmlspecialchars($r['commence_time']) ?></td>
+              <td><?= htmlspecialchars(format_est_datetime($r['commence_time'])) ?></td>
               <td><?= htmlspecialchars($r['home_team']) ?> vs <?= htmlspecialchars($r['away_team']) ?></td>
               <td><?= htmlspecialchars($MAJOR_SPORTS[$r['sport_key']] ?? $r['sport_key']) ?></td>
               <td>

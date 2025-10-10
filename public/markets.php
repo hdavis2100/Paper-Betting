@@ -15,6 +15,7 @@ $stmt = $pdo->prepare("
   FROM odds o
   JOIN events e ON e.event_id = o.event_id
   WHERE e.sport_key = :sport
+    AND e.commence_time >= UTC_TIMESTAMP()
   GROUP BY o.market
   ORDER BY event_count DESC, o.market ASC
 ");
