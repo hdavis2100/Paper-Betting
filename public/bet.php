@@ -41,13 +41,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $check->execute([$eventId]);
         $row = $check->fetch();
         if (!$row) {
-            $errors[] = 'Invalid event.';
-        } else {
-            $now = new DateTime('now', new DateTimeZone('UTC'));
-            $kickoff = new DateTime($row['commence_time'], new DateTimeZone('UTC'));
-            if ($kickoff <= $now) {
-                $errors[] = 'This event has already started. Betting is closed.';
-            }
+          throw new RuntimeException('Invalid event.');
+        }
+
+        $now = new DateTime('now', new DateTimeZone('UTC'));
+        $kickoff = new DateTime($row['commence_time'], new DateTimeZone('UTC'));
+        if ($kickoff <= $now) {
+          throw new RuntimeException('This event has already started. Betting is closed.');
         }
 
         $pdo->beginTransaction();
@@ -76,7 +76,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pdo->commit();
         $success = "Bet placed! Potential return: " . number_format($potential, 2);
       } catch (Throwable $e) {
-        $pdo->rollBack();
+        if ($pdo->inTransaction()) {
+          $pdo->rollBack();
+        }
         $errors[] = $e->getMessage();
       }
     }
@@ -149,9 +151,9 @@ if ($eventId !== '') {
     <p>Select a bet from the <a href="/sportsbet/public/events.php">Events</a> list.</p>
   <?php else: ?>
     <p><strong><?= htmlspecialchars($event['home_team']) ?> vs <?= htmlspecialchars($event['away_team']) ?></strong></p>
-    <p>Kickoff: <?= htmlspecialchars($event['commence_time']) ?></p>
-    <p>Best H2H — Home: <?= $homeBest ? htmlspecialchars(number_format((float)$homeBest,2)) : '—' ?>,
-       Away: <?= $awayBest ? htmlspecialchars(number_format((float)$awayBest,2)) : '—' ?></p>
+    <p>Kickoff (ET): <?= htmlspecialchars(format_est_datetime($event['commence_time'])) ?></p>
+    <p>Best H2H — Home: <?= $homeBest ? htmlspecialchars(format_american_odds((float)$homeBest)) : '—' ?>,
+       Away: <?= $awayBest ? htmlspecialchars(format_american_odds((float)$awayBest)) : '—' ?></p>
 
     <form method="post" action="/sportsbet/public/bet.php">
       <input type="hidden" name="event_id" value="<?= htmlspecialchars($event['event_id']) ?>">
@@ -160,12 +162,12 @@ if ($eventId !== '') {
         <select name="outcome" required>
           <?php if ($homeBest): ?>
             <option value="<?= htmlspecialchars($event['home_team']) ?>" <?php if ($outcomeParam===$event['home_team']) echo 'selected'; ?>>
-              <?= htmlspecialchars($event['home_team']) ?> (<?= htmlspecialchars(number_format((float)$homeBest,2)) ?>)
+              <?= htmlspecialchars($event['home_team']) ?> (<?= htmlspecialchars(format_american_odds((float)$homeBest)) ?>)
             </option>
           <?php endif; ?>
           <?php if ($awayBest): ?>
             <option value="<?= htmlspecialchars($event['away_team']) ?>" <?php if ($outcomeParam===$event['away_team']) echo 'selected'; ?>>
-              <?= htmlspecialchars($event['away_team']) ?> (<?= htmlspecialchars(number_format((float)$awayBest,2)) ?>)
+              <?= htmlspecialchars($event['away_team']) ?> (<?= htmlspecialchars(format_american_odds((float)$awayBest)) ?>)
             </option>
           <?php endif; ?>
         </select>
