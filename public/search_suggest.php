@@ -9,7 +9,8 @@ if ($q !== '' && mb_strlen($q) >= 2) {
   $stmt = $pdo->prepare("
     SELECT event_id, home_team, away_team
     FROM events
-    WHERE home_team LIKE :q OR away_team LIKE :q
+    WHERE (home_team LIKE :q OR away_team LIKE :q)
+      AND commence_time >= UTC_TIMESTAMP()
     ORDER BY commence_time ASC
     LIMIT 10
   ");

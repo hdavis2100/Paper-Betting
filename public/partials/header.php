@@ -37,10 +37,13 @@ if ($headerUser) {
     <div id="mainNav" class="collapse navbar-collapse">
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
         <?php if ($headerUser): ?>
+          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/index.php">Account</a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/sports.php">Sports</a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/events.php">Events</a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/my_bets.php">My Bets</a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/leaderboard.php">Leaderboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/users.php">User search</a></li>
+          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/settings.php">Settings</a></li>
         <?php endif; ?>
       </ul>
         <form class="d-flex position-relative" role="search" action="/sportsbet/public/search.php" method="get">
