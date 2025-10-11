@@ -62,7 +62,7 @@ if ($headerUser) {
             const data = await res.json();
             list.innerHTML = data.map(r =>
                 `<li class="list-group-item">
-                <a href="/sportsbet/public/bet.php?event_id=${r.event_id}">
+                <a href="/sportsbet/public/bet.php?event_id=${r.event_id}&market=h2h">
                     ${r.home_team} vs ${r.away_team}
                 </a>
                 </li>`
