@@ -184,6 +184,48 @@ function fetch_user_stats(PDO $pdo, int $userId): array
   ];
 }
 
+function fetch_user_profit_timeseries(PDO $pdo, int $userId, int $daysBack = 90): array
+{
+  $daysBack = max(1, $daysBack);
+
+  $utc = new DateTimeZone('UTC');
+  $cutoff = (new DateTimeImmutable('now', $utc))
+    ->modify(sprintf('-%d days', $daysBack))
+    ->format('Y-m-d H:i:s');
+
+  $stmt = $pdo->prepare(
+    "SELECT DATE(COALESCE(settled_at, placed_at)) AS day,
+            SUM(actual_return - stake) AS net_change
+       FROM bets
+      WHERE user_id = ?
+        AND status IN ('won','lost','void','cancelled')
+        AND COALESCE(settled_at, placed_at) >= ?
+      GROUP BY DATE(COALESCE(settled_at, placed_at))
+      ORDER BY DATE(COALESCE(settled_at, placed_at))"
+  );
+  $stmt->execute([$userId, $cutoff]);
+  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+  $series = [];
+  $running = 0.0;
+
+  foreach ($rows as $row) {
+    $day = $row['day'] ?? null;
+    if (!$day) {
+      continue;
+    }
+
+    $change = (float)($row['net_change'] ?? 0.0);
+    $running += $change;
+    $series[] = [
+      'day' => $day,
+      'net' => round($running, 2),
+    ];
+  }
+
+  return $series;
+}
+
 function best_h2h_snapshot(PDO $pdo, array $events): array
 {
   if (!$events) {

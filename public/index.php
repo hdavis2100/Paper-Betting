@@ -33,6 +33,26 @@ $pendingPotential = $stats['pending_potential'];
 $winLossRatio = $stats['win_loss_ratio'];
 $winRate = $stats['win_rate'];
 
+$profitSeries = fetch_user_profit_timeseries($pdo, $userId);
+$profitLabels = [];
+$profitValues = [];
+if ($profitSeries) {
+    $eastern = new DateTimeZone('America/New_York');
+    foreach ($profitSeries as $point) {
+        $day = $point['day'];
+        try {
+            $dt = new DateTime($day, new DateTimeZone('UTC'));
+            $dt->setTimezone($eastern);
+            $label = $dt->format('M j, Y');
+        } catch (Throwable $e) {
+            $label = $day;
+        }
+
+        $profitLabels[] = $label;
+        $profitValues[] = $point['net'];
+    }
+}
+
 include __DIR__ . '/partials/header.php';
 
 $joined = $account['created_at'] ? format_est_datetime($account['created_at']) : 'Unknown';
@@ -115,4 +135,87 @@ $netProfitClass = $netProfit > 0 ? 'text-success' : ($netProfit < 0 ? 'text-dang
     </div>
   </div>
 
+  <div class="card shadow-sm mt-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h5 mb-0">Profit over time</h2>
+        <?php if ($profitSeries): ?>
+          <span class="text-muted small">Last <?= count($profitSeries) ?> settled day<?= count($profitSeries) === 1 ? '' : 's' ?></span>
+        <?php endif; ?>
+      </div>
+      <?php if ($profitSeries): ?>
+        <canvas id="profitChart" height="240"></canvas>
+      <?php else: ?>
+        <p class="text-muted mb-0">Settle at least one bet to unlock your profit history.</p>
+      <?php endif; ?>
+    </div>
+  </div>
+
 <?php include __DIR__ . '/partials/footer.php';
+
+if ($profitSeries):
+    $labelsJson = json_encode($profitLabels, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    $valuesJson = json_encode($profitValues, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+?>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" integrity="sha384-+iKZ6LcCzxUdiqhc0HCN6LiFmbx1Ksd2VkMY1k9EkJxTRmjigi1C4bPFUMgpK2BQ" crossorigin="anonymous"></script>
+  <script>
+    (function() {
+      const ctx = document.getElementById('profitChart');
+      if (!ctx) {
+        return;
+      }
+
+      const labels = <?= $labelsJson ?>;
+      const data = <?= $valuesJson ?>;
+
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [{
+            label: 'Net profit',
+            data,
+            fill: false,
+            borderColor: '#0d6efd',
+            backgroundColor: 'rgba(13, 110, 253, 0.2)',
+            tension: 0.25,
+            pointRadius: 3,
+            pointHoverRadius: 5,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false,
+          },
+          scales: {
+            x: {
+              ticks: {
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 8,
+              },
+            },
+            y: {
+              ticks: {
+                callback: (value) => '$' + Number(value).toFixed(2),
+              },
+            },
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const value = ctx.parsed.y ?? 0;
+                  return `Net profit: $${value.toFixed(2)}`;
+                },
+              },
+            },
+          },
+        },
+      });
+    })();
+  </script>
+<?php endif; ?>
