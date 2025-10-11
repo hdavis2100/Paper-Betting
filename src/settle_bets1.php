@@ -29,6 +29,7 @@ const DAYS_FROM_DEFAULT = 7;
  *   --days-from=N              Override the score lookback window.
  *   --include-upcoming         Inspect bets even if the event has not started.
  *   --dump-scores              Print the fetched API score summary for matched events.
+ *   --debug                    Emit verbose settlement diagnostics to stdout.
  */
 $cliOpts = getopt('', [
   'sport::',
@@ -36,12 +37,21 @@ $cliOpts = getopt('', [
   'days-from::',
   'include-upcoming',
   'dump-scores',
+  'debug',
 ]);
 
 $sportFilter = $cliOpts['sport'] ?? null;
 $eventFilter = $cliOpts['event'] ?? null;
 $includeUpcoming = array_key_exists('include-upcoming', $cliOpts);
 $dumpScores = array_key_exists('dump-scores', $cliOpts);
+$debugMode = array_key_exists('debug', $cliOpts);
+
+function debug_log(string $message): void {
+  global $debugMode;
+  if ($debugMode) {
+    echo $message . "\n";
+  }
+}
 
 $daysFrom = DAYS_FROM_DEFAULT;
 if (isset($cliOpts['days-from'])) {
@@ -185,6 +195,7 @@ $updateBet = $pdo->prepare("UPDATE bets SET status = ?, settled_at = NOW(), actu
 $totalSettled = 0;
 
 foreach ($bySport as $sport => $events) {
+  debug_log(sprintf('[sport] %s (%d event(s) pending)', $sport, count($events)));
   // 2) Fetch recent scores for this sport
   $effectiveDaysFrom = max(1, min($daysFrom, 3));
   if ($effectiveDaysFrom !== $daysFrom && !$dumpScores) {
@@ -237,11 +248,14 @@ foreach ($bySport as $sport => $events) {
       if ($dumpScores) {
         echo "[{$sport}] Event {$eventId} not returned by scores API.\n";
       }
+      debug_log(sprintf('[event] %s missing from API response; skipping settlement for now.', $eventId));
       // No result yet; skip until next run
       continue;
     }
 
     $info = $scoreMap[$eventId];
+
+    debug_log(sprintf('[event] %s | %s vs %s | commence=%s', $eventId, $home, $away, (string)$ev['commence_time']));
 
     if ($dumpScores) {
       $homePrint = $info['home_score'] ?? 'n/a';
@@ -394,6 +408,8 @@ foreach ($bySport as $sport => $events) {
         }
         $totalScore = $homeScore + $awayScore;
       }
+    } else {
+      debug_log(sprintf('[event] %s still marked in-progress; completed flag is false.', $eventId));
     }
 
     // Settle all pending bets for this event
@@ -409,6 +425,7 @@ foreach ($bySport as $sport => $events) {
       $reason = '';
 
       if (!$completed) {
+        debug_log(sprintf('[bet] %s (user %d) skipped: event not completed.', $b['id'], $userId));
         continue;
       }
 
@@ -417,6 +434,7 @@ foreach ($bySport as $sport => $events) {
 
       if ($marketType === 'h2h') {
         if ($winner === null) {
+          debug_log(sprintf('[bet] %s pending: no winner resolved yet (homeScore=%s, awayScore=%s).', $b['id'], $homeScore !== null ? (string)$homeScore : 'null', $awayScore !== null ? (string)$awayScore : 'null'));
           continue;
         }
         if ($winner === 'TIE') {
@@ -434,6 +452,7 @@ foreach ($bySport as $sport => $events) {
         }
       } elseif ($marketType === 'spreads') {
         if ($homeScore === null || $awayScore === null || $lineValue === null) {
+          debug_log(sprintf('[bet] %s pending: spread requires scores (%s/%s) and line (%s).', $b['id'], $homeScore !== null ? (string)$homeScore : 'null', $awayScore !== null ? (string)$awayScore : 'null', $lineValue !== null ? (string)$lineValue : 'null'));
           continue;
         }
         if (strcasecmp($b['outcome'], $home) === 0) {
@@ -461,6 +480,7 @@ foreach ($bySport as $sport => $events) {
         }
       } elseif ($marketType === 'totals') {
         if ($totalScore === null || $lineValue === null) {
+          debug_log(sprintf('[bet] %s pending: total requires aggregate score (%s) and line (%s).', $b['id'], $totalScore !== null ? (string)$totalScore : 'null', $lineValue !== null ? (string)$lineValue : 'null'));
           continue;
         }
         $selection = strtolower($b['outcome']);
@@ -515,6 +535,7 @@ foreach ($bySport as $sport => $events) {
 
         $pdo->commit();
         $totalSettled++;
+        debug_log(sprintf('[bet] %s settled as %s (payout %.2f).', $b['id'], $newStatus, $payout));
       } catch (Throwable $e) {
         $pdo->rollBack();
         fwrite(STDERR, "Settle failed for bet {$b['id']}: {$e->getMessage()}\n");
