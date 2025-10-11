@@ -6,7 +6,7 @@ require_login();
 $userId = current_user()['id'];
 
 $stmt = $pdo->prepare(
-  "SELECT b.id, b.event_id, b.outcome, b.odds, b.stake, b.potential_return, b.status, b.placed_at,
+  "SELECT b.id, b.event_id, b.market, b.outcome, b.line, b.odds, b.stake, b.potential_return, b.status, b.placed_at,
           e.home_team, e.away_team, e.commence_time
    FROM bets b
    JOIN events e ON b.event_id = e.event_id
@@ -51,7 +51,7 @@ include __DIR__ . '/partials/header.php';
           <td><?= htmlspecialchars(format_est_datetime($b['placed_at'])) ?></td>
           <td><?= htmlspecialchars($b['home_team']) ?> vs <?= htmlspecialchars($b['away_team']) ?><br>
               <small><?= htmlspecialchars(format_est_datetime($b['commence_time'])) ?></small></td>
-          <td><?= htmlspecialchars($b['outcome']) ?></td>
+          <td><?= htmlspecialchars(format_market_label($b['market'])) ?> — <?= htmlspecialchars(format_market_outcome_label($b['market'], $b['outcome'], $b['line'] !== null ? (float)$b['line'] : null)) ?></td>
           <td><?= htmlspecialchars(format_american_odds((float)$b['odds'])) ?></td>
           <td><?= htmlspecialchars(number_format((float)$b['stake'], 2)) ?></td>
           <td><?= htmlspecialchars(number_format((float)$b['potential_return'], 2)) ?></td>

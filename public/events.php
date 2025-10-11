@@ -97,7 +97,7 @@ include __DIR__ . '/partials/header.php';
               <td><?= htmlspecialchars($MAJOR_SPORTS[$r['sport_key']] ?? $r['sport_key']) ?></td>
               <td>
                 <a class="btn btn-sm btn-outline-primary"
-                   href="/sportsbet/public/bet.php?event_id=<?= urlencode($r['event_id']) ?>">
+                   href="/sportsbet/public/bet.php?event_id=<?= urlencode($r['event_id']) ?>&market=h2h">
                   Bet
                 </a>
               </td>

@@ -43,7 +43,7 @@ include __DIR__ . '/partials/header.php';
     <?php foreach ($markets as $m): ?>
       <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
          href="/sportsbet/public/browse.php?sport=<?= urlencode($sport) ?>&market=<?= urlencode($m['market']) ?>">
-        <span><?= htmlspecialchars($m['market']) ?></span>
+        <span><?= htmlspecialchars(format_market_label($m['market'])) ?></span>
         <span class="badge bg-secondary"><?= (int)$m['event_count'] ?> events</span>
       </a>
     <?php endforeach; ?>

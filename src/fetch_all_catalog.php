@@ -16,6 +16,9 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/db.php';
+require __DIR__ . '/schema.php';
+
+ensure_app_schema($pdo);
 
 $config = require '/var/www/secure_config/sportsbet_config.php';
 $apiKey = $config['odds_api_key'] ?? '';
@@ -137,8 +140,8 @@ $insEvent = $pdo->prepare("
 $delOdds = $pdo->prepare("DELETE FROM odds WHERE event_id = ?");
 
 $insOdds = $pdo->prepare("
-  INSERT INTO odds (event_id, bookmaker, market, outcome, price)
-  VALUES (:event_id, :bookmaker, :market, :outcome, :price)
+  INSERT INTO odds (event_id, bookmaker, market, outcome, price, line)
+  VALUES (:event_id, :bookmaker, :market, :outcome, :price, :line)
 ");
 
 if ($canBookmakers) {
@@ -299,12 +302,20 @@ foreach ($activeSports as $sportKey) {
                 $price = isset($o['price']) ? (float)$o['price'] : null;
                 if ($name === '' || $price === null) continue;
 
+                $line = null;
+                if (array_key_exists('point', $o) && $o['point'] !== null && $o['point'] !== '') {
+                  if (is_numeric($o['point'])) {
+                    $line = (float)$o['point'];
+                  }
+                }
+
                 $insOdds->execute([
                   ':event_id'  => $eventId,
                   ':bookmaker' => $bookmakerLabel,
                   ':market'    => $mKey,
                   ':outcome'   => $name,
                   ':price'     => $price,
+                  ':line'      => $line,
                 ]);
                 $countOdds++;
               }

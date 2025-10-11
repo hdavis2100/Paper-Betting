@@ -197,11 +197,11 @@ foreach ($bySport as $sport => $events) {
     $completed = (bool)($info['completed'] ?? false);
     $scoresArr = $info['scores'] ?? [];
 
+    $homeScore = null;
+    $awayScore = null;
+    $totalScore = null;
     $winner = null;
     if ($completed) {
-      $homeScore = null;
-      $awayScore = null;
-
       if (is_array($scoresArr)) {
         foreach ($scoresArr as $row) {
           if (!is_array($row)) continue;
@@ -233,6 +233,7 @@ foreach ($bySport as $sport => $events) {
         } else {
           $winner = 'TIE';
         }
+        $totalScore = $homeScore + $awayScore;
       }
     }
 
@@ -248,18 +249,22 @@ foreach ($bySport as $sport => $events) {
       $newStatus = 'pending';
       $reason = '';
 
-      if (!$completed || $winner === null) {
-        // Not completed or no score info: skip for now
+      if (!$completed) {
         continue;
       }
 
-      if ($winner === 'TIE') {
-        // Refund stake
-        $newStatus = 'void';
-        $payout = $stake;
-        $reason = 'bet_void_refund';
-      } else {
-        if ($b['outcome'] === $winner) {
+      $marketType = strtolower($b['market'] ?? 'h2h');
+      $lineValue = $b['line'] !== null ? (float)$b['line'] : null;
+
+      if ($marketType === 'h2h') {
+        if ($winner === null) {
+          continue;
+        }
+        if ($winner === 'TIE') {
+          $newStatus = 'void';
+          $payout = $stake;
+          $reason = 'bet_void_refund';
+        } elseif ($b['outcome'] === $winner) {
           $newStatus = 'won';
           $payout = (float)$b['stake'] * (float)$b['odds'];
           $reason = 'bet_payout';
@@ -268,15 +273,78 @@ foreach ($bySport as $sport => $events) {
           $payout = 0.0;
           $reason = 'bet_loss';
         }
+      } elseif ($marketType === 'spreads') {
+        if ($homeScore === null || $awayScore === null || $lineValue === null) {
+          continue;
+        }
+        if (strcasecmp($b['outcome'], $home) === 0) {
+          $teamScore = $homeScore;
+          $oppScore  = $awayScore;
+        } elseif (strcasecmp($b['outcome'], $away) === 0) {
+          $teamScore = $awayScore;
+          $oppScore  = $homeScore;
+        } else {
+          continue;
+        }
+        $adjusted = $teamScore + $lineValue;
+        if ($adjusted > $oppScore + 1e-6) {
+          $newStatus = 'won';
+          $payout = $stake * (float)$b['odds'];
+          $reason = 'bet_payout';
+        } elseif (abs($adjusted - $oppScore) <= 1e-6) {
+          $newStatus = 'void';
+          $payout = $stake;
+          $reason = 'bet_void_refund';
+        } else {
+          $newStatus = 'lost';
+          $payout = 0.0;
+          $reason = 'bet_loss';
+        }
+      } elseif ($marketType === 'totals') {
+        if ($totalScore === null || $lineValue === null) {
+          continue;
+        }
+        $selection = strtolower($b['outcome']);
+        if ($selection === 'over') {
+          if ($totalScore > $lineValue + 1e-6) {
+            $newStatus = 'won';
+            $payout = $stake * (float)$b['odds'];
+            $reason = 'bet_payout';
+          } elseif (abs($totalScore - $lineValue) <= 1e-6) {
+            $newStatus = 'void';
+            $payout = $stake;
+            $reason = 'bet_void_refund';
+          } else {
+            $newStatus = 'lost';
+            $payout = 0.0;
+            $reason = 'bet_loss';
+          }
+        } elseif ($selection === 'under') {
+          if ($totalScore < $lineValue - 1e-6) {
+            $newStatus = 'won';
+            $payout = $stake * (float)$b['odds'];
+            $reason = 'bet_payout';
+          } elseif (abs($totalScore - $lineValue) <= 1e-6) {
+            $newStatus = 'void';
+            $payout = $stake;
+            $reason = 'bet_void_refund';
+          } else {
+            $newStatus = 'lost';
+            $payout = 0.0;
+            $reason = 'bet_loss';
+          }
+        } else {
+          continue;
+        }
+      } else {
+        continue;
       }
 
       try {
         $pdo->beginTransaction();
 
-        // Update bet
         $updateBet->execute([$newStatus, $payout, $b['id']]);
 
-        // If refund or win, credit wallet
         if ($payout > 0) {
           $lockWallet->execute([$userId]);
           $wallet = $lockWallet->fetch();

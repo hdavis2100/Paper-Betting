@@ -62,3 +62,9 @@ The script deletes matching entries from the `odds` table and, when
 present, removes the market keys from the `markets` table. Future fetch
 runs will also skip any market listed in the removal script's default
 set, so the unwanted records do not return.
+
+## Spreads and totals support
+
+* Odds ingestion now records the line (point spread / total) alongside each price. When the `odds` table is missing the `line` column the application adds it automatically.
+* The betslip records a wager's market and line, so spreads and totals can be placed from the browse page and settled correctly once scores arrive.
+* Event listings and the bet form display American-formatted odds with the spread or total baked into the selection label, making it clear what number you are backing before you submit the ticket.
