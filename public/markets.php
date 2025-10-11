@@ -15,6 +15,8 @@ $stmt = $pdo->prepare("
   FROM odds o
   JOIN events e ON e.event_id = o.event_id
   WHERE e.sport_key = :sport
+    AND e.commence_time >= UTC_TIMESTAMP()
+    AND o.market <> 'h2h_lay'
   GROUP BY o.market
   ORDER BY event_count DESC, o.market ASC
 ");
@@ -24,7 +26,8 @@ $markets = $stmt->fetchAll();
 // Sport title
 $tstmt = $pdo->prepare("SELECT title FROM sports WHERE sport_key = ? LIMIT 1");
 $tstmt->execute([$sport]);
-$title = ($tstmt->fetch()['title'] ?? $sport);
+$rawTitle = trim((string)($tstmt->fetch()['title'] ?? ''));
+$title = $rawTitle !== '' ? $rawTitle : ucwords(str_replace('_', ' ', $sport));
 
 include __DIR__ . '/partials/header.php';
 ?>
