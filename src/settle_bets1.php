@@ -20,19 +20,154 @@ if ($apiKey === '') {
 }
 
 /** How many days back to fetch scores for (covers late finishes). */
-const DAYS_FROM = 7;
+const DAYS_FROM_DEFAULT = 7;
+
+/**
+ * Optional CLI flags:
+ *   --sport=SPORT_KEY          Limit to a single sport.
+ *   --event=EVENT_ID           Limit to one event.
+ *   --days-from=N              Override the score lookback window.
+ *   --include-upcoming         Inspect bets even if the event has not started.
+ *   --dump-scores              Print the fetched API score summary for matched events.
+ */
+$cliOpts = getopt('', [
+  'sport::',
+  'event::',
+  'days-from::',
+  'include-upcoming',
+  'dump-scores',
+]);
+
+$sportFilter = $cliOpts['sport'] ?? null;
+$eventFilter = $cliOpts['event'] ?? null;
+$includeUpcoming = array_key_exists('include-upcoming', $cliOpts);
+$dumpScores = array_key_exists('dump-scores', $cliOpts);
+
+$daysFrom = DAYS_FROM_DEFAULT;
+if (isset($cliOpts['days-from'])) {
+  $override = (int)$cliOpts['days-from'];
+  if ($override >= 0) {
+    $daysFrom = $override;
+  }
+}
 
 /** 1) Gather unsettled events grouped by sport */
+function normalize_team_label(string $name): string {
+  $converted = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $name);
+  if ($converted === false) {
+    $converted = $name;
+  }
+  $converted = strtolower($converted);
+  return preg_replace('/[^a-z0-9]/', '', $converted);
+}
+
+function identify_competitor(string $slug, string $homeSlug, string $awaySlug): ?string {
+  if ($slug !== '' && $slug === $homeSlug) {
+    return 'home';
+  }
+  if ($slug !== '' && $slug === $awaySlug) {
+    return 'away';
+  }
+
+  if ($slug !== '' && $homeSlug !== '' && levenshtein($slug, $homeSlug) <= 2) {
+    return 'home';
+  }
+  if ($slug !== '' && $awaySlug !== '' && levenshtein($slug, $awaySlug) <= 2) {
+    return 'away';
+  }
+
+  return null;
+}
+
+function parse_numeric_score($value): ?float {
+  if (is_int($value) || is_float($value)) {
+    return (float)$value;
+  }
+  if (is_string($value)) {
+    $trimmed = trim($value);
+    if ($trimmed === '') {
+      return null;
+    }
+    if (is_numeric($trimmed)) {
+      return (float)$trimmed;
+    }
+  }
+  return null;
+}
+
+function interpret_result_keyword($value): ?string {
+  if (!is_string($value)) {
+    return null;
+  }
+  $norm = strtolower(trim($value));
+  if ($norm === '') {
+    return null;
+  }
+  if (in_array($norm, ['win', 'winner', 'won'], true)) {
+    return 'win';
+  }
+  if (in_array($norm, ['loss', 'lose', 'lost', 'loser'], true)) {
+    return 'loss';
+  }
+  if (in_array($norm, ['draw', 'tie', 'push', 'no contest', 'no-contest', 'no_contest', 'no result', 'no-result'], true)) {
+    return 'tie';
+  }
+  return null;
+}
+
+$conditions = ["b.status = 'pending'"];
+$params = [];
+if (!$includeUpcoming) {
+  $conditions[] = 'e.commence_time < UTC_TIMESTAMP()';
+}
+if ($sportFilter !== null && $sportFilter !== '') {
+  $conditions[] = 'e.sport_key = ?';
+  $params[] = $sportFilter;
+}
+if ($eventFilter !== null && $eventFilter !== '') {
+  $conditions[] = 'e.event_id = ?';
+  $params[] = $eventFilter;
+}
+
 $sql = "
-  SELECT DISTINCT e.sport_key, e.event_id, e.home_team, e.away_team
+  SELECT DISTINCT e.sport_key, e.event_id, e.home_team, e.away_team, e.commence_time
   FROM bets b
   JOIN events e ON e.event_id = b.event_id
-  WHERE b.status = 'pending'
-    AND e.commence_time < NOW()
-";
-$rows = $pdo->query($sql)->fetchAll();
+  WHERE " . implode(' AND ', $conditions) . '
+  ORDER BY e.commence_time ASC
+';
+
+$stmt = $pdo->prepare($sql);
+$stmt->execute($params);
+$rows = $stmt->fetchAll();
 if (!$rows) {
-  echo "Nothing to settle.\n";
+  $upcomingSql = "
+    SELECT COUNT(*)
+    FROM bets b
+    JOIN events e ON e.event_id = b.event_id
+    WHERE b.status = 'pending'
+      AND e.commence_time >= UTC_TIMESTAMP()
+  ";
+  $upcomingParams = [];
+  if ($sportFilter !== null && $sportFilter !== '') {
+    $upcomingSql .= ' AND e.sport_key = ?';
+    $upcomingParams[] = $sportFilter;
+  }
+  if ($eventFilter !== null && $eventFilter !== '') {
+    $upcomingSql .= ' AND e.event_id = ?';
+    $upcomingParams[] = $eventFilter;
+  }
+
+  $upcomingStmt = $pdo->prepare($upcomingSql);
+  $upcomingStmt->execute($upcomingParams);
+  $upcoming = (int)$upcomingStmt->fetchColumn();
+
+  if ($upcoming > 0 && !$includeUpcoming) {
+    echo "Nothing to settle (pending bets exist but their events have not started yet).\n";
+    echo "Re-run with --include-upcoming to inspect them or verify commence_time values.\n";
+  } else {
+    echo "Nothing to settle for the provided filters.\n";
+  }
   exit(0);
 }
 
@@ -51,9 +186,14 @@ $totalSettled = 0;
 
 foreach ($bySport as $sport => $events) {
   // 2) Fetch recent scores for this sport
+  $effectiveDaysFrom = max(1, min($daysFrom, 3));
+  if ($effectiveDaysFrom !== $daysFrom && !$dumpScores) {
+    fwrite(STDERR, "[{$sport}] daysFrom clamped to {$effectiveDaysFrom} to satisfy API limits.\n");
+  }
+
   $scoresUrl = sprintf(
-    'https://api.the-odds-api.com/v4/sports/%s/scores/?daysFrom=%d&apiKey=%s',
-    urlencode($sport), DAYS_FROM, urlencode($apiKey)
+    'https://api.the-odds-api.com/v4/sports/%s/scores?daysFrom=%d&dateFormat=iso&apiKey=%s',
+    rawurlencode($sport), $effectiveDaysFrom, urlencode($apiKey)
   );
 
   $ch = curl_init($scoresUrl);
@@ -64,7 +204,11 @@ foreach ($bySport as $sport => $events) {
   curl_close($ch);
 
   if ($resp === false || $code !== 200) {
-    fwrite(STDERR, "[{$sport}] Scores fetch failed: HTTP {$code} {$err}\n");
+    $bodySnippet = '';
+    if (is_string($resp) && $resp !== '') {
+      $bodySnippet = ' Body: ' . substr(trim($resp), 0, 300);
+    }
+    fwrite(STDERR, "[{$sport}] Scores fetch failed: HTTP {$code} {$err}{$bodySnippet}\n");
     continue;
   }
 
@@ -86,31 +230,170 @@ foreach ($bySport as $sport => $events) {
     $eventId = $ev['event_id'];
     $home = $ev['home_team'];
     $away = $ev['away_team'];
+    $homeSlug = normalize_team_label($home);
+    $awaySlug = normalize_team_label($away);
 
     if (!isset($scoreMap[$eventId])) {
+      if ($dumpScores) {
+        echo "[{$sport}] Event {$eventId} not returned by scores API.\n";
+      }
       // No result yet; skip until next run
       continue;
     }
 
     $info = $scoreMap[$eventId];
 
+    if ($dumpScores) {
+      $homePrint = $info['home_score'] ?? 'n/a';
+      $awayPrint = $info['away_score'] ?? 'n/a';
+      $state = ($info['completed'] ?? false) ? 'completed' : 'in-progress';
+      printf(
+        "[scores] %s | %s vs %s | %s | home=%s away=%s\n",
+        $eventId,
+        $home,
+        $away,
+        $state,
+        (string)$homePrint,
+        (string)$awayPrint
+      );
+    }
+
     // Try to extract winner from scores
     $completed = (bool)($info['completed'] ?? false);
     $scoresArr = $info['scores'] ?? [];
 
+    $homeScore = null;
+    $awayScore = null;
+    $totalScore = null;
     $winner = null;
-    if ($completed && is_array($scoresArr) && count($scoresArr) >= 2) {
-      // Scores typically like: [ {name: team, score: "1"}, {name: team, score: "2"} ]
-      $s1 = $scoresArr[0] ?? null;
-      $s2 = $scoresArr[1] ?? null;
-      $name1 = is_array($s1) ? ($s1['name'] ?? '') : '';
-      $name2 = is_array($s2) ? ($s2['name'] ?? '') : '';
-      $sc1 = is_array($s1) ? (float)($s1['score'] ?? 0) : 0.0;
-      $sc2 = is_array($s2) ? (float)($s2['score'] ?? 0) : 0.0;
+    $winnerNameHints = [];
+    $orderedNumericScores = [];
+    $orderedTargets = [];
+    if ($completed) {
+      if (is_array($scoresArr)) {
+        foreach ($scoresArr as $row) {
+          if (!is_array($row)) continue;
+          $name = $row['name'] ?? '';
+          if ($name === '') continue;
+          $slug = normalize_team_label($name);
+          $target = identify_competitor($slug, $homeSlug, $awaySlug);
+          $orderedTargets[] = $target;
 
-      if ($sc1 > $sc2) $winner = $name1;
-      elseif ($sc2 > $sc1) $winner = $name2;
-      else $winner = 'TIE';
+          $scoreRaw = $row['score'] ?? null;
+          $scoreVal = parse_numeric_score($scoreRaw);
+          $orderedNumericScores[] = $scoreVal;
+
+          if ($scoreVal !== null) {
+            if ($target === 'home' && $homeScore === null) {
+              $homeScore = $scoreVal;
+            } elseif ($target === 'away' && $awayScore === null) {
+              $awayScore = $scoreVal;
+            }
+            continue;
+          }
+
+          $keyword = interpret_result_keyword($scoreRaw);
+          if ($keyword === 'win') {
+            if ($target === 'home') {
+              $winner = $home;
+            } elseif ($target === 'away') {
+              $winner = $away;
+            } else {
+              $winnerNameHints[] = $name;
+            }
+          } elseif ($keyword === 'loss') {
+            if ($target === 'home') {
+              $winner = $away;
+            } elseif ($target === 'away') {
+              $winner = $home;
+            }
+          } elseif ($keyword === 'tie') {
+            $winner = 'TIE';
+          }
+        }
+      }
+
+      if (($homeScore === null || $awayScore === null) && $orderedNumericScores) {
+        foreach ($orderedNumericScores as $idx => $numeric) {
+          if ($numeric === null) {
+            continue;
+          }
+          $target = $orderedTargets[$idx] ?? null;
+          if ($target === 'home' && $homeScore === null) {
+            $homeScore = $numeric;
+          } elseif ($target === 'away' && $awayScore === null) {
+            $awayScore = $numeric;
+          }
+        }
+      }
+
+      if (($homeScore === null || $awayScore === null) && count($orderedNumericScores) === 2) {
+        if ($homeScore === null && $orderedNumericScores[0] !== null) {
+          $homeScore = $orderedNumericScores[0];
+        }
+        if ($awayScore === null && $orderedNumericScores[1] !== null) {
+          $awayScore = $orderedNumericScores[1];
+        }
+      }
+
+      if ($homeScore === null && isset($info['home_score'])) {
+        $parsed = parse_numeric_score($info['home_score']);
+        if ($parsed !== null) {
+          $homeScore = $parsed;
+        } else {
+          $keyword = interpret_result_keyword($info['home_score']);
+          if ($keyword === 'win') {
+            $winner = $home;
+          } elseif ($keyword === 'loss') {
+            $winner = $away;
+          } elseif ($keyword === 'tie') {
+            $winner = 'TIE';
+          }
+        }
+      }
+      if ($awayScore === null && isset($info['away_score'])) {
+        $parsed = parse_numeric_score($info['away_score']);
+        if ($parsed !== null) {
+          $awayScore = $parsed;
+        } else {
+          $keyword = interpret_result_keyword($info['away_score']);
+          if ($keyword === 'win') {
+            $winner = $away;
+          } elseif ($keyword === 'loss') {
+            $winner = $home;
+          } elseif ($keyword === 'tie') {
+            $winner = 'TIE';
+          }
+        }
+      }
+
+      if ($winner === null && $winnerNameHints) {
+        foreach ($winnerNameHints as $hint) {
+          $hintSlug = normalize_team_label($hint);
+          $target = identify_competitor($hintSlug, $homeSlug, $awaySlug);
+          if ($target === 'home') {
+            $winner = $home;
+            break;
+          }
+          if ($target === 'away') {
+            $winner = $away;
+            break;
+          }
+        }
+      }
+
+      if ($homeScore !== null && $awayScore !== null) {
+        if ($winner === null) {
+          if ($homeScore > $awayScore) {
+            $winner = $home;
+          } elseif ($awayScore > $homeScore) {
+            $winner = $away;
+          } else {
+            $winner = 'TIE';
+          }
+        }
+        $totalScore = $homeScore + $awayScore;
+      }
     }
 
     // Settle all pending bets for this event
@@ -125,18 +408,22 @@ foreach ($bySport as $sport => $events) {
       $newStatus = 'pending';
       $reason = '';
 
-      if (!$completed || $winner === null) {
-        // Not completed or no score info: skip for now
+      if (!$completed) {
         continue;
       }
 
-      if ($winner === 'TIE') {
-        // Refund stake
-        $newStatus = 'void';
-        $payout = $stake;
-        $reason = 'bet_void_refund';
-      } else {
-        if ($b['outcome'] === $winner) {
+      $marketType = strtolower($b['market'] ?? 'h2h');
+      $lineValue = $b['line'] !== null ? (float)$b['line'] : null;
+
+      if ($marketType === 'h2h') {
+        if ($winner === null) {
+          continue;
+        }
+        if ($winner === 'TIE') {
+          $newStatus = 'void';
+          $payout = $stake;
+          $reason = 'bet_void_refund';
+        } elseif ($b['outcome'] === $winner) {
           $newStatus = 'won';
           $payout = (float)$b['stake'] * (float)$b['odds'];
           $reason = 'bet_payout';
@@ -145,15 +432,78 @@ foreach ($bySport as $sport => $events) {
           $payout = 0.0;
           $reason = 'bet_loss';
         }
+      } elseif ($marketType === 'spreads') {
+        if ($homeScore === null || $awayScore === null || $lineValue === null) {
+          continue;
+        }
+        if (strcasecmp($b['outcome'], $home) === 0) {
+          $teamScore = $homeScore;
+          $oppScore  = $awayScore;
+        } elseif (strcasecmp($b['outcome'], $away) === 0) {
+          $teamScore = $awayScore;
+          $oppScore  = $homeScore;
+        } else {
+          continue;
+        }
+        $adjusted = $teamScore + $lineValue;
+        if ($adjusted > $oppScore + 1e-6) {
+          $newStatus = 'won';
+          $payout = $stake * (float)$b['odds'];
+          $reason = 'bet_payout';
+        } elseif (abs($adjusted - $oppScore) <= 1e-6) {
+          $newStatus = 'void';
+          $payout = $stake;
+          $reason = 'bet_void_refund';
+        } else {
+          $newStatus = 'lost';
+          $payout = 0.0;
+          $reason = 'bet_loss';
+        }
+      } elseif ($marketType === 'totals') {
+        if ($totalScore === null || $lineValue === null) {
+          continue;
+        }
+        $selection = strtolower($b['outcome']);
+        if ($selection === 'over') {
+          if ($totalScore > $lineValue + 1e-6) {
+            $newStatus = 'won';
+            $payout = $stake * (float)$b['odds'];
+            $reason = 'bet_payout';
+          } elseif (abs($totalScore - $lineValue) <= 1e-6) {
+            $newStatus = 'void';
+            $payout = $stake;
+            $reason = 'bet_void_refund';
+          } else {
+            $newStatus = 'lost';
+            $payout = 0.0;
+            $reason = 'bet_loss';
+          }
+        } elseif ($selection === 'under') {
+          if ($totalScore < $lineValue - 1e-6) {
+            $newStatus = 'won';
+            $payout = $stake * (float)$b['odds'];
+            $reason = 'bet_payout';
+          } elseif (abs($totalScore - $lineValue) <= 1e-6) {
+            $newStatus = 'void';
+            $payout = $stake;
+            $reason = 'bet_void_refund';
+          } else {
+            $newStatus = 'lost';
+            $payout = 0.0;
+            $reason = 'bet_loss';
+          }
+        } else {
+          continue;
+        }
+      } else {
+        continue;
       }
 
       try {
         $pdo->beginTransaction();
 
-        // Update bet
         $updateBet->execute([$newStatus, $payout, $b['id']]);
 
-        // If refund or win, credit wallet
         if ($payout > 0) {
           $lockWallet->execute([$userId]);
           $wallet = $lockWallet->fetch();
