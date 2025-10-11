@@ -10,6 +10,18 @@ if ($sport === '' || $market === '') {
   header('Location: /sportsbet/public/sports.php'); exit;
 }
 
+if (strcasecmp($market, 'h2h_lay') === 0) {
+  header('Location: /sportsbet/public/markets.php?sport=' . urlencode($sport));
+  exit;
+}
+
+$titleStmt = $pdo->prepare("SELECT title FROM sports WHERE sport_key = ? LIMIT 1");
+$titleStmt->execute([$sport]);
+$sportTitle = trim((string)($titleStmt->fetchColumn() ?? ''));
+if ($sportTitle === '') {
+  $sportTitle = ucwords(str_replace('_', ' ', $sport));
+}
+
 // Pull upcoming events for this sport
 $eventsStmt = $pdo->prepare("
   SELECT e.event_id, e.home_team, e.away_team, e.commence_time
@@ -33,7 +45,7 @@ include __DIR__ . '/partials/header.php';
 ?>
 <div class="d-flex align-items-center justify-content-between mb-3">
   <div>
-    <h1 class="h4 mb-0">Browse — <?= htmlspecialchars($sport) ?> / <?= htmlspecialchars($market) ?></h1>
+    <h1 class="h4 mb-0">Browse — <?= htmlspecialchars($sportTitle) ?> / <?= htmlspecialchars($market) ?></h1>
     <div class="small text-muted">
       <a href="/sportsbet/public/sports.php">Sports</a> →
       <a href="/sportsbet/public/markets.php?sport=<?= urlencode($sport) ?>">Markets</a> →

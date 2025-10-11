@@ -47,3 +47,18 @@ overrides (for example `bookmaker_key=betmgm`) if you have not added the
 config keys yet. Existing bets are safe to keep: wager tickets store the
 decimal price that was used at placement time, so deleting non-preferred
 odds rows does not retroactively change or void previously placed bets.
+
+## Removing unwanted markets
+
+If you no longer want to keep a market such as `h2h_lay`, you can purge
+it (and its associated odds rows) without altering your schema:
+
+```
+php src/prune_markets.php             # defaults to removing h2h_lay
+php src/prune_markets.php markets=h2h_lay,totals_alt
+```
+
+The script deletes matching entries from the `odds` table and, when
+present, removes the market keys from the `markets` table. Future fetch
+runs will also skip any market listed in the removal script's default
+set, so the unwanted records do not return.

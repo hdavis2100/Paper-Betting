@@ -26,6 +26,8 @@ $preferredBookmakerLabel = trim((string)($config['preferred_bookmaker_label'] ??
 const REGION  = 'uk';          // 'us','uk','eu','au'
 const MARKETS = 'h2h';         // 'h2h,spreads,totals' etc.
 
+const BLOCKED_MARKETS = ['h2h_lay'];
+
 /** Sports to fetch (edit this list). CLI can override with comma-separated list. */
 $defaultSports = ['soccer_epl', 'basketball_nba', 'americanfootball_nfl'];
 $sports = $defaultSports;
@@ -171,6 +173,9 @@ foreach ($sports as $sportKey) {
         if (empty($bk['markets'])) continue;
         foreach ($bk['markets'] as $m) {
           $market = $m['key'] ?? 'unknown';
+          if (in_array($market, BLOCKED_MARKETS, true)) {
+            continue;
+          }
           if (empty($m['outcomes'])) continue;
           foreach ($m['outcomes'] as $o) {
             $name  = $o['name']  ?? '';

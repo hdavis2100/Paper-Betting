@@ -9,8 +9,10 @@ $results = [];
 if ($q !== '' && mb_strlen($q) >= 2) {
   $stmt = $pdo->prepare("
     SELECT e.event_id, e.sport_key, e.home_team, e.away_team, e.commence_time,
+           s.title AS sport_title,
            MATCH(e.home_team, e.away_team) AGAINST(:q IN NATURAL LANGUAGE MODE) AS score
     FROM events e
+    LEFT JOIN sports s ON s.sport_key = e.sport_key
     WHERE MATCH(e.home_team, e.away_team) AGAINST(:q IN NATURAL LANGUAGE MODE)
       AND e.commence_time >= UTC_TIMESTAMP()
     ORDER BY score DESC, e.commence_time ASC
@@ -39,7 +41,13 @@ include __DIR__ . '/partials/header.php';
             <tr>
               <td><?= htmlspecialchars(format_est_datetime($r['commence_time'])) ?></td>
               <td><?= htmlspecialchars($r['home_team']) ?> vs <?= htmlspecialchars($r['away_team']) ?></td>
-              <td><?= htmlspecialchars($r['sport_key']) ?></td>
+              <?php
+                $sportTitle = trim((string)($r['sport_title'] ?? ''));
+                if ($sportTitle === '') {
+                  $sportTitle = ucwords(str_replace('_', ' ', $r['sport_key']));
+                }
+              ?>
+              <td><?= htmlspecialchars($sportTitle) ?></td>
               <td><a class="btn btn-sm btn-outline-primary"
                      href="/sportsbet/public/bet.php?event_id=<?= urlencode($r['event_id']) ?>">Bet</a></td>
             </tr>

@@ -50,7 +50,25 @@ for ($i = 1; $i < $argc; $i++) {
 $bookmakerFilterActive = $preferredBookmakerKey !== null || $preferredBookmakerTitle !== null;
 
 $REGIONS = $cli['regions'] ?? 'us,uk,eu';                // adjust as you like
-$MARKETS = $cli['markets'] ?? 'h2h,spreads,totals';      // add btts, outrights, draw_no_bet if needed
+$marketsInput = $cli['markets'] ?? 'h2h,spreads,totals'; // add btts, outrights, draw_no_bet if needed
+$BLOCKED_MARKETS = ['h2h_lay'];
+
+$marketList = array_values(array_filter(array_map('trim', explode(',', $marketsInput)), static function (string $m): bool {
+  return $m !== '';
+}));
+
+$marketListInitial = $marketList;
+$marketList = array_values(array_diff($marketList, $BLOCKED_MARKETS));
+if ($marketListInitial !== $marketList) {
+  fwrite(STDERR, "INFO: Removed blocked markets from request: " . implode(', ', array_diff($marketListInitial, $marketList)) . "\n");
+}
+
+if (empty($marketList)) {
+  fwrite(STDERR, "ERROR: All requested markets are blocked; aborting fetch.\n");
+  exit(1);
+}
+
+$MARKETS = implode(',', $marketList);
 $SPORTS_OVERRIDE = isset($cli['sports'])
   ? array_filter(array_map('trim', explode(',', $cli['sports'])))
   : null;
@@ -269,6 +287,9 @@ foreach ($activeSports as $sportKey) {
         if (!empty($bk['markets'])) {
           foreach ($bk['markets'] as $m) {
             $mKey = $m['key'] ?? 'unknown';
+            if (in_array($mKey, $BLOCKED_MARKETS, true)) {
+              continue;
+            }
             if ($canMarkets) {
               try { $insMarket->execute([':key' => $mKey, ':desc' => $mKey]); } catch (Throwable $__) {}
             }
