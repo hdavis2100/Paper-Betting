@@ -5,11 +5,13 @@ require_once __DIR__ . '/../../src/bootstrap.php';
 // optional: compute wallet for header if logged in
 $headerUser = current_user();
 $headerBalance = null;
+$headerUnreadNotifications = 0;
 if ($headerUser) {
   $s = $pdo->prepare('SELECT balance FROM wallets WHERE user_id = ? LIMIT 1');
   $s->execute([$headerUser['id']]);
   $w = $s->fetch();
   $headerBalance = $w ? (float)$w['balance'] : 0.0;
+  $headerUnreadNotifications = fetch_unread_notifications_count($pdo, (int)$headerUser['id']);
 }
 ?>
 <!doctype html>
@@ -37,10 +39,19 @@ if ($headerUser) {
     <div id="mainNav" class="collapse navbar-collapse">
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
         <?php if ($headerUser): ?>
+          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/index.php">Account</a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/sports.php">Sports</a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/events.php">Events</a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/my_bets.php">My Bets</a></li>
+          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/tracked.php">Tracked</a></li>
+          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/notifications.php">Notifications
+            <?php if ($headerUnreadNotifications > 0): ?>
+              <span class="badge text-bg-danger ms-1"><?= (int) $headerUnreadNotifications ?></span>
+            <?php endif; ?>
+          </a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/leaderboard.php">Leaderboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/users.php">User search</a></li>
+          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/settings.php">Settings</a></li>
         <?php endif; ?>
       </ul>
         <form class="d-flex position-relative" role="search" action="/sportsbet/public/search.php" method="get">

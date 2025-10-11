@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/db.php';
 require __DIR__ . '/schema.php';
+require __DIR__ . '/tracking.php';
 
 ensure_app_schema($pdo);
 
@@ -200,6 +201,7 @@ foreach ($sports as $sportKey) {
               ':price'     => $price,
               ':line'      => $line,
             ]);
+            record_tracked_notifications($pdo, $eventId, $market, $name, $line, $price, $bookmakerLabel);
             $countOdds++;
           }
         }

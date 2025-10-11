@@ -6,6 +6,7 @@ session_start();
 
 require __DIR__ . '/db.php';
 require __DIR__ . '/schema.php';
+require __DIR__ . '/tracking.php';
 
 ensure_app_schema($pdo);
 
@@ -21,17 +22,7 @@ function require_login(): void {
 }
 
 function format_american_odds(float $decimal): string {
-  if ($decimal <= 1.0) {
-    return 'N/A';
-  }
-
-  if ($decimal >= 2.0) {
-    $value = (int) round(($decimal - 1.0) * 100.0);
-    return sprintf('+%d', $value);
-  }
-
-  $value = (int) round(-100.0 / ($decimal - 1.0));
-  return (string) $value;
+  return decimal_to_american_odds($decimal);
 }
 
 function format_est_datetime(?string $utcString): string {
@@ -127,6 +118,103 @@ function normalize_market(string $market): string
 {
   $market = strtolower($market);
   return in_array($market, supported_markets(), true) ? $market : 'h2h';
+}
+
+function fetch_user_stats(PDO $pdo, int $userId): array
+{
+  $stmt = $pdo->prepare(
+    "SELECT
+        SUM(CASE WHEN status = 'won' THEN 1 ELSE 0 END) AS wins,
+        SUM(CASE WHEN status = 'lost' THEN 1 ELSE 0 END) AS losses,
+        SUM(CASE WHEN status = 'void' THEN 1 ELSE 0 END) AS voids,
+        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled,
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+        COUNT(*) AS total,
+        SUM(CASE WHEN status IN ('won','lost','void','cancelled') THEN 1 ELSE 0 END) AS settled,
+        COALESCE(SUM(stake), 0) AS total_staked,
+        COALESCE(SUM(CASE WHEN status IN ('won','lost','void','cancelled') THEN stake ELSE 0 END), 0) AS settled_staked,
+        COALESCE(SUM(CASE WHEN status IN ('won','lost','void','cancelled') THEN actual_return ELSE 0 END), 0) AS settled_return,
+        COALESCE(SUM(CASE WHEN status = 'pending' THEN potential_return ELSE 0 END), 0) AS pending_potential
+      FROM bets
+      WHERE user_id = ?"
+  );
+  $stmt->execute([$userId]);
+  $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+  $wins = (int)($row['wins'] ?? 0);
+  $losses = (int)($row['losses'] ?? 0);
+  $voids = (int)($row['voids'] ?? 0);
+  $cancelled = (int)($row['cancelled'] ?? 0);
+  $pending = (int)($row['pending'] ?? 0);
+  $total = (int)($row['total'] ?? 0);
+  $settled = (int)($row['settled'] ?? 0);
+  $totalStaked = (float)($row['total_staked'] ?? 0.0);
+  $settledStaked = (float)($row['settled_staked'] ?? 0.0);
+  $settledReturn = (float)($row['settled_return'] ?? 0.0);
+  $pendingPotential = (float)($row['pending_potential'] ?? 0.0);
+
+  $netProfit = $settledReturn - $settledStaked;
+  $winLossRatio = $losses > 0 ? $wins / max($losses, 1) : null;
+  $winRate = $settled > 0 ? $wins / $settled : null;
+
+  return [
+    'wins' => $wins,
+    'losses' => $losses,
+    'voids' => $voids,
+    'cancelled' => $cancelled,
+    'pending' => $pending,
+    'total' => $total,
+    'settled' => $settled,
+    'total_staked' => $totalStaked,
+    'settled_staked' => $settledStaked,
+    'settled_return' => $settledReturn,
+    'pending_potential' => $pendingPotential,
+    'net_profit' => $netProfit,
+    'win_loss_ratio' => $winLossRatio,
+    'win_rate' => $winRate,
+  ];
+}
+
+function fetch_user_profit_timeseries(PDO $pdo, int $userId, int $daysBack = 90): array
+{
+  $daysBack = max(1, $daysBack);
+
+  $utc = new DateTimeZone('UTC');
+  $cutoff = (new DateTimeImmutable('now', $utc))
+    ->modify(sprintf('-%d days', $daysBack))
+    ->format('Y-m-d H:i:s');
+
+  $stmt = $pdo->prepare(
+    "SELECT DATE(COALESCE(settled_at, placed_at)) AS day,
+            SUM(actual_return - stake) AS net_change
+       FROM bets
+      WHERE user_id = ?
+        AND status IN ('won','lost','void','cancelled')
+        AND COALESCE(settled_at, placed_at) >= ?
+      GROUP BY DATE(COALESCE(settled_at, placed_at))
+      ORDER BY DATE(COALESCE(settled_at, placed_at))"
+  );
+  $stmt->execute([$userId, $cutoff]);
+  $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+  $series = [];
+  $running = 0.0;
+
+  foreach ($rows as $row) {
+    $day = $row['day'] ?? null;
+    if (!$day) {
+      continue;
+    }
+
+    $change = (float)($row['net_change'] ?? 0.0);
+    $running += $change;
+    $series[] = [
+      'day' => $day,
+      'net' => round($running, 2),
+    ];
+  }
+
+  return $series;
 }
 
 function best_h2h_snapshot(PDO $pdo, array $events): array
