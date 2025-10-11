@@ -128,3 +128,75 @@ function normalize_market(string $market): string
   $market = strtolower($market);
   return in_array($market, supported_markets(), true) ? $market : 'h2h';
 }
+
+function best_h2h_snapshot(PDO $pdo, array $events): array
+{
+  if (!$events) {
+    return [];
+  }
+
+  $eventIds = [];
+  $homeTeams = [];
+  $awayTeams = [];
+
+  foreach ($events as $event) {
+    if (!isset($event['event_id'])) {
+      continue;
+    }
+
+    $eventId = (string) $event['event_id'];
+    $eventIds[] = $eventId;
+    $homeTeams[$eventId] = (string) ($event['home_team'] ?? '');
+    $awayTeams[$eventId] = (string) ($event['away_team'] ?? '');
+  }
+
+  if (!$eventIds) {
+    return [];
+  }
+
+  $placeholders = implode(',', array_fill(0, count($eventIds), '?'));
+  $sql = "SELECT event_id, outcome, price, bookmaker FROM odds WHERE market = 'h2h' AND event_id IN ($placeholders)";
+  $stmt = $pdo->prepare($sql);
+  $stmt->execute($eventIds);
+
+  $snapshot = [];
+  foreach ($eventIds as $eventId) {
+    $snapshot[$eventId] = ['home' => null, 'away' => null];
+  }
+
+  while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+    if (!isset($row['event_id'])) {
+      continue;
+    }
+
+    $eventId = (string) $row['event_id'];
+    if (!isset($snapshot[$eventId])) {
+      continue;
+    }
+
+    $outcome = (string) ($row['outcome'] ?? '');
+    $price = isset($row['price']) ? (float) $row['price'] : null;
+    $bookmaker = trim((string) ($row['bookmaker'] ?? ''));
+
+    if ($price === null) {
+      continue;
+    }
+
+    if ($outcome === ($homeTeams[$eventId] ?? null)) {
+      $current = $snapshot[$eventId]['home'];
+      if ($current === null || $price > $current['price']) {
+        $snapshot[$eventId]['home'] = ['price' => $price, 'bookmaker' => $bookmaker];
+      }
+      continue;
+    }
+
+    if ($outcome === ($awayTeams[$eventId] ?? null)) {
+      $current = $snapshot[$eventId]['away'];
+      if ($current === null || $price > $current['price']) {
+        $snapshot[$eventId]['away'] = ['price' => $price, 'bookmaker' => $bookmaker];
+      }
+    }
+  }
+
+  return $snapshot;
+}

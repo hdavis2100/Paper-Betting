@@ -49,7 +49,7 @@ include __DIR__ . '/partials/header.php';
               ?>
               <td><?= htmlspecialchars($sportTitle) ?></td>
               <td><a class="btn btn-sm btn-outline-primary"
-                     href="/sportsbet/public/bet.php?event_id=<?= urlencode($r['event_id']) ?>&market=h2h">Bet</a></td>
+                     href="/sportsbet/public/bet.php?event_id=<?= urlencode($r['event_id']) ?>">View markets</a></td>
             </tr>
           <?php endforeach; ?>
           </tbody>
