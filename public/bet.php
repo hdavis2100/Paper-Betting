@@ -118,6 +118,8 @@ function build_selection_options(PDO $pdo, array $event, string $market): array
 
 $errors = [];
 $success = null;
+$trackErrors = [];
+$trackSuccess = null;
 
 $eventId = trim((string) ($_POST['event_id'] ?? $_GET['event_id'] ?? ''));
 $requestedMarket = trim((string) ($_POST['market'] ?? $_GET['market'] ?? 'h2h'));
@@ -136,6 +138,9 @@ $prefLine = null;
 if ($prefLineInput !== null && $prefLineInput !== '' && is_numeric($prefLineInput)) {
     $prefLine = (float) $prefLineInput;
 }
+$trackOutcomePref = $prefOutcome;
+$trackLinePref = $prefLine;
+$trackTargetPref = '';
 
 if ($eventId !== '') {
     $stmt = $pdo->prepare('SELECT event_id, sport_key, home_team, away_team, commence_time FROM events WHERE event_id = ? LIMIT 1');
@@ -172,142 +177,238 @@ if ($eventId !== '') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $stake = isset($_POST['stake']) ? (float) $_POST['stake'] : 0.0;
-    $selectionRaw = $_POST['selection'] ?? '';
+    $action = $_POST['action'] ?? 'bet';
 
-    if ($event === null) {
-        $errors[] = 'Invalid event selected.';
-    }
-
-    if (!$selectionOptions) {
-        $errors[] = 'No odds are available for this market.';
-    }
-
-    if ($stake <= 0) {
-        $errors[] = 'Please enter a positive stake.';
-    }
-
-    if ($selectionRaw === '') {
-        $errors[] = 'Please select an outcome.';
-    }
-
-    $selectedOutcome = null;
-    $selectedLine = null;
-
-    if (!$errors) {
-        $decoded = json_decode($selectionRaw, true);
-        if (!is_array($decoded) || !isset($decoded['outcome'])) {
-            $errors[] = 'Invalid outcome selection.';
-        } else {
-            $selectedOutcome = (string) $decoded['outcome'];
-            if (array_key_exists('line', $decoded) && $decoded['line'] !== null && $decoded['line'] !== '') {
-                if (!is_numeric((string) $decoded['line'])) {
-                    $errors[] = 'Invalid line selection.';
-                } else {
-                    $selectedLine = (float) $decoded['line'];
-                }
-            }
+    if ($action === 'track') {
+        if ($event === null) {
+            $trackErrors[] = 'Invalid event selected.';
         }
-    }
 
-    $matchedOption = null;
-    if (!$errors) {
-        foreach ($selectionOptions as $opt) {
-            $lineOpt = $opt['line'];
-            $lineMatch = false;
-            if ($selectedLine === null && $lineOpt === null) {
-                $lineMatch = true;
-            } elseif ($selectedLine !== null && $lineOpt !== null && abs($lineOpt - $selectedLine) < 0.0001) {
-                $lineMatch = true;
-            }
-            if ($lineMatch && $opt['outcome'] === $selectedOutcome) {
-                $matchedOption = $opt;
-                break;
-            }
+        if (!$selectionOptions) {
+            $trackErrors[] = 'No odds are available for tracking right now.';
         }
-        if ($matchedOption === null) {
-            $errors[] = 'The selected outcome is no longer available. Please refresh and try again.';
+
+        $selectionRaw = $_POST['track_selection'] ?? '';
+        $trackTargetPref = $_POST['target_american'] ?? '';
+        if ($selectionRaw === '') {
+            $trackErrors[] = 'Please choose a selection to track.';
         }
-    }
 
-    if (!$errors && $bettingClosed) {
-        $errors[] = 'Betting is closed for this event (already started).';
-    }
-
-    if (!$errors && $event) {
-        try {
-            $priceStmt = $pdo->prepare(
-                'SELECT price, line FROM odds WHERE event_id = ? AND market = ? AND outcome = ? ORDER BY last_updated DESC'
-            );
-            $priceStmt->execute([$eventId, $market, $selectedOutcome]);
-            $rows = $priceStmt->fetchAll();
-            $oddsRow = null;
-            foreach ($rows as $row) {
-                $lineRow = $row['line'] !== null ? (float) $row['line'] : null;
-                if ($selectedLine === null && $lineRow === null) {
-                    $oddsRow = $row;
-                    break;
-                }
-                if ($selectedLine !== null && $lineRow !== null && abs($lineRow - $selectedLine) < 0.0001) {
-                    $oddsRow = $row;
-                    break;
-                }
-            }
-            if ($oddsRow === null) {
-                $errors[] = 'Unable to locate current odds for that outcome. Try again.';
+        $trackOutcome = null;
+        $trackLine = null;
+        if (!$trackErrors) {
+            $decoded = json_decode($selectionRaw, true);
+            if (!is_array($decoded) || !isset($decoded['outcome'])) {
+                $trackErrors[] = 'Invalid selection payload.';
             } else {
-                $odds = (float) $oddsRow['price'];
-                $lineForBet = $oddsRow['line'] !== null ? (float) $oddsRow['line'] : null;
-                $potential = round($stake * $odds, 2);
-                $userId = current_user()['id'];
-
-                $pdo->beginTransaction();
-
-                $walletStmt = $pdo->prepare('SELECT balance FROM wallets WHERE user_id = ? FOR UPDATE');
-                $walletStmt->execute([$userId]);
-                $wallet = $walletStmt->fetch();
-                if (!$wallet) {
-                    throw new RuntimeException('Wallet not found.');
+                $trackOutcome = (string) $decoded['outcome'];
+                $trackOutcomePref = $trackOutcome;
+                if (array_key_exists('line', $decoded) && $decoded['line'] !== null && $decoded['line'] !== '') {
+                    if (!is_numeric((string) $decoded['line'])) {
+                        $trackErrors[] = 'Invalid line value for tracking.';
+                    } else {
+                        $trackLine = (float) $decoded['line'];
+                        $trackLinePref = $trackLine;
+                    }
                 }
-                if ((float) $wallet['balance'] < $stake) {
-                    throw new RuntimeException('Insufficient funds.');
+            }
+        }
+
+        $matchForTracking = null;
+        if (!$trackErrors) {
+            foreach ($selectionOptions as $opt) {
+                $lineOpt = $opt['line'];
+                $lineMatch = ($trackLine === null && $lineOpt === null) || ($trackLine !== null && $lineOpt !== null && abs($trackLine - $lineOpt) < 0.0001);
+                if ($lineMatch && $opt['outcome'] === $trackOutcome) {
+                    $matchForTracking = $opt;
+                    break;
                 }
+            }
+            if ($matchForTracking === null) {
+                $trackErrors[] = 'The selected outcome is no longer available to track.';
+            }
+        }
 
-                $newBalance = (float) $wallet['balance'] - $stake;
-                $pdo->prepare('UPDATE wallets SET balance = ? WHERE user_id = ?')->execute([$newBalance, $userId]);
+        $targetInput = trim((string) ($_POST['target_american'] ?? ''));
+        $targetDecimal = null;
+        if ($targetInput === '') {
+            $trackErrors[] = 'Enter a target odds value (e.g. +160 or 2.6).';
+        } else {
+            $targetDecimal = american_to_decimal_odds($targetInput);
+            if ($targetDecimal === null || $targetDecimal <= 1.0) {
+                $trackErrors[] = 'Enter a valid odds value greater than +100/1.00.';
+            }
+        }
 
-                $pdo->prepare('INSERT INTO bets (user_id, event_id, market, outcome, line, odds, stake, potential_return) VALUES (?,?,?,?,?,?,?,?)')
-                    ->execute([
-                        $userId,
-                        $eventId,
-                        $market,
-                        $selectedOutcome,
-                        $lineForBet,
-                        $odds,
-                        $stake,
-                        $potential,
-                    ]);
+        if (!$trackErrors && $event !== null && $matchForTracking !== null && $targetDecimal !== null) {
+            $userId = (int) current_user()['id'];
+            $lookup = $pdo->prepare(
+                'SELECT id FROM tracked_odds WHERE user_id = ? AND event_id = ? AND market = ? AND outcome = ? AND (line <=> ?)' 
+            );
+            $lookup->execute([$userId, $eventId, $market, $trackOutcome, $trackLine]);
+            $existingId = $lookup->fetchColumn();
 
-                $pdo->prepare('INSERT INTO wallet_transactions (user_id, change_amt, balance_after, reason) VALUES (?,?,?,?)')
-                    ->execute([$userId, -$stake, $newBalance, 'bet']);
-
-                $pdo->commit();
-
-                $success = sprintf(
-                    'Bet placed on %s (%s) — potential return %s',
-                    format_market_outcome_label($marketLower, $selectedOutcome, $lineForBet),
-                    format_american_odds($odds),
-                    number_format($potential, 2)
+            if ($existingId) {
+                $update = $pdo->prepare(
+                    'UPDATE tracked_odds SET target_price = ?, updated_at = UTC_TIMESTAMP(), last_notified_at = NULL, last_notified_price = NULL WHERE id = ?'
                 );
+                $update->execute([$targetDecimal, (int) $existingId]);
+            } else {
+                $insert = $pdo->prepare(
+                    'INSERT INTO tracked_odds (user_id, event_id, market, outcome, line, target_price) VALUES (?,?,?,?,?,?)'
+                );
+                $insert->execute([$userId, $eventId, $market, $trackOutcome, $trackLine, $targetDecimal]);
+            }
 
-                $prefOutcome = $selectedOutcome;
-                $prefLine = $lineForBet;
+            $trackSuccess = sprintf(
+                'Tracking %s at %s. We\'ll notify you when the price reaches your target.',
+                format_market_outcome_label($marketLower, $trackOutcome, $trackLine),
+                decimal_to_american_odds($targetDecimal)
+            );
+            $trackTargetPref = '';
+
+            if (isset($matchForTracking['price']) && (float) $matchForTracking['price'] >= $targetDecimal) {
+                record_tracked_notifications($pdo, $eventId, $market, $trackOutcome, $trackLine, (float) $matchForTracking['price'], $matchForTracking['bookmaker'] ?? '');
             }
-        } catch (Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
+        }
+    } else {
+        $stake = isset($_POST['stake']) ? (float) $_POST['stake'] : 0.0;
+        $selectionRaw = $_POST['selection'] ?? '';
+
+        if ($event === null) {
+            $errors[] = 'Invalid event selected.';
+        }
+
+        if (!$selectionOptions) {
+            $errors[] = 'No odds are available for this market.';
+        }
+
+        if ($stake <= 0) {
+            $errors[] = 'Please enter a positive stake.';
+        }
+
+        if ($selectionRaw === '') {
+            $errors[] = 'Please select an outcome.';
+        }
+
+        $selectedOutcome = null;
+        $selectedLine = null;
+
+        if (!$errors) {
+            $decoded = json_decode($selectionRaw, true);
+            if (!is_array($decoded) || !isset($decoded['outcome'])) {
+                $errors[] = 'Invalid outcome selection.';
+            } else {
+                $selectedOutcome = (string) $decoded['outcome'];
+                if (array_key_exists('line', $decoded) && $decoded['line'] !== null && $decoded['line'] !== '') {
+                    if (!is_numeric((string) $decoded['line'])) {
+                        $errors[] = 'Invalid line selection.';
+                    } else {
+                        $selectedLine = (float) $decoded['line'];
+                    }
+                }
             }
-            $errors[] = $e->getMessage();
+        }
+
+        $matchedOption = null;
+        if (!$errors) {
+            foreach ($selectionOptions as $opt) {
+                $lineOpt = $opt['line'];
+                $lineMatch = false;
+                if ($selectedLine === null && $lineOpt === null) {
+                    $lineMatch = true;
+                } elseif ($selectedLine !== null && $lineOpt !== null && abs($lineOpt - $selectedLine) < 0.0001) {
+                    $lineMatch = true;
+                }
+                if ($lineMatch && $opt['outcome'] === $selectedOutcome) {
+                    $matchedOption = $opt;
+                    break;
+                }
+            }
+            if ($matchedOption === null) {
+                $errors[] = 'The selected outcome is no longer available. Please refresh and try again.';
+            }
+        }
+
+        if (!$errors && $bettingClosed) {
+            $errors[] = 'Betting is closed for this event (already started).';
+        }
+
+        if (!$errors && $event) {
+            try {
+                $priceStmt = $pdo->prepare(
+                    'SELECT price, line FROM odds WHERE event_id = ? AND market = ? AND outcome = ? ORDER BY last_updated DESC'
+                );
+                $priceStmt->execute([$eventId, $market, $selectedOutcome]);
+                $rows = $priceStmt->fetchAll();
+                $oddsRow = null;
+                foreach ($rows as $row) {
+                    $lineRow = $row['line'] !== null ? (float) $row['line'] : null;
+                    if ($selectedLine === null && $lineRow === null) {
+                        $oddsRow = $row;
+                        break;
+                    }
+                    if ($selectedLine !== null && $lineRow !== null && abs($lineRow - $selectedLine) < 0.0001) {
+                        $oddsRow = $row;
+                        break;
+                    }
+                }
+                if ($oddsRow === null) {
+                    $errors[] = 'Unable to locate current odds for that outcome. Try again.';
+                } else {
+                    $odds = (float) $oddsRow['price'];
+                    $lineForBet = $oddsRow['line'] !== null ? (float) $oddsRow['line'] : null;
+                    $potential = round($stake * $odds, 2);
+                    $userId = current_user()['id'];
+
+                    $pdo->beginTransaction();
+
+                    $walletStmt = $pdo->prepare('SELECT balance FROM wallets WHERE user_id = ? FOR UPDATE');
+                    $walletStmt->execute([$userId]);
+                    $wallet = $walletStmt->fetch();
+                    if (!$wallet) {
+                        throw new RuntimeException('Wallet not found.');
+                    }
+                    if ((float) $wallet['balance'] < $stake) {
+                        throw new RuntimeException('Insufficient funds.');
+                    }
+
+                    $newBalance = (float) $wallet['balance'] - $stake;
+                    $pdo->prepare('UPDATE wallets SET balance = ? WHERE user_id = ?')->execute([$newBalance, $userId]);
+
+                    $pdo->prepare('INSERT INTO bets (user_id, event_id, market, outcome, line, odds, stake, potential_return) VALUES (?,?,?,?,?,?,?,?)')
+                        ->execute([
+                            $userId,
+                            $eventId,
+                            $market,
+                            $selectedOutcome,
+                            $lineForBet,
+                            $odds,
+                            $stake,
+                            $potential,
+                        ]);
+
+                    $pdo->prepare('INSERT INTO wallet_transactions (user_id, change_amt, balance_after, reason) VALUES (?,?,?,?)')
+                        ->execute([$userId, -$stake, $newBalance, 'bet']);
+
+                    $pdo->commit();
+
+                    $success = sprintf(
+                        'Bet placed on %s (%s) — potential return %s',
+                        format_market_outcome_label($marketLower, $selectedOutcome, $lineForBet),
+                        format_american_odds($odds),
+                        number_format($potential, 2)
+                    );
+
+                    $prefOutcome = $selectedOutcome;
+                    $prefLine = $lineForBet;
+                }
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $errors[] = $e->getMessage();
+            }
         }
     }
 }
@@ -324,6 +425,12 @@ include __DIR__ . '/partials/header.php';
         <?php endforeach; ?>
         <?php if ($success): ?>
           <div class="alert alert-success"><?= htmlspecialchars($success) ?></div>
+        <?php endif; ?>
+        <?php foreach ($trackErrors as $err): ?>
+          <div class="alert alert-warning"><?= htmlspecialchars($err) ?></div>
+        <?php endforeach; ?>
+        <?php if ($trackSuccess): ?>
+          <div class="alert alert-info"><?= htmlspecialchars($trackSuccess) ?></div>
         <?php endif; ?>
 
         <?php if (!$event): ?>
@@ -371,6 +478,7 @@ include __DIR__ . '/partials/header.php';
               <form method="post" class="mt-3">
                 <input type="hidden" name="event_id" value="<?= htmlspecialchars($event['event_id']) ?>">
                 <input type="hidden" name="market" value="<?= htmlspecialchars($marketLower) ?>">
+                <input type="hidden" name="action" value="bet">
                 <div class="mb-3">
                   <label class="form-label" for="selection">Outcome</label>
                   <select class="form-select" id="selection" name="selection" required>
@@ -396,6 +504,42 @@ include __DIR__ . '/partials/header.php';
               </form>
             <?php endif; ?>
           <?php endif; ?>
+        <?php endif; ?>
+        <?php if ($event && $selectionOptions): ?>
+          <hr class="my-4">
+          <div class="mt-3">
+            <h3 class="h6 text-uppercase text-muted mb-2">Set a price alert</h3>
+            <p class="text-muted small mb-3">Choose a selection and target odds. We'll notify you when the market reaches your goal.</p>
+            <form method="post" class="row gy-2 gx-3 align-items-end">
+              <input type="hidden" name="action" value="track">
+              <input type="hidden" name="event_id" value="<?= htmlspecialchars($event['event_id']) ?>">
+              <input type="hidden" name="market" value="<?= htmlspecialchars($marketLower) ?>">
+              <div class="col-md-6">
+                <label class="form-label" for="track_selection">Selection</label>
+                <select class="form-select" id="track_selection" name="track_selection" required>
+                  <option value="">-- choose --</option>
+                  <?php foreach ($selectionOptions as $opt): ?>
+                    <?php
+                      $selected = '';
+                      $lineOpt = $opt['line'];
+                      $lineMatch = ($trackLinePref === null && $lineOpt === null) || ($trackLinePref !== null && $lineOpt !== null && abs($trackLinePref - $lineOpt) < 0.0001);
+                      if ($trackOutcomePref !== null && $opt['outcome'] === $trackOutcomePref && $lineMatch) {
+                          $selected = 'selected';
+                      }
+                    ?>
+                    <option value='<?= htmlspecialchars($opt['value']) ?>' <?= $selected ?>><?= htmlspecialchars($opt['label']) ?></option>
+                  <?php endforeach; ?>
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label" for="target_american">Target odds</label>
+                <input class="form-control" type="text" id="target_american" name="target_american" placeholder="e.g. +160" value="<?= htmlspecialchars((string) $trackTargetPref) ?>" required>
+              </div>
+              <div class="col-md-3">
+                <button type="submit" class="btn btn-outline-primary w-100">Track price</button>
+              </div>
+            </form>
+          </div>
         <?php endif; ?>
       </div>
     </div>

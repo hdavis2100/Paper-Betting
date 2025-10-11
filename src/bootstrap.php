@@ -6,6 +6,7 @@ session_start();
 
 require __DIR__ . '/db.php';
 require __DIR__ . '/schema.php';
+require __DIR__ . '/tracking.php';
 
 ensure_app_schema($pdo);
 
@@ -21,17 +22,7 @@ function require_login(): void {
 }
 
 function format_american_odds(float $decimal): string {
-  if ($decimal <= 1.0) {
-    return 'N/A';
-  }
-
-  if ($decimal >= 2.0) {
-    $value = (int) round(($decimal - 1.0) * 100.0);
-    return sprintf('+%d', $value);
-  }
-
-  $value = (int) round(-100.0 / ($decimal - 1.0));
-  return (string) $value;
+  return decimal_to_american_odds($decimal);
 }
 
 function format_est_datetime(?string $utcString): string {

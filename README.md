@@ -74,3 +74,9 @@ set, so the unwanted records do not return.
 * The dashboard at `index.php` now summarises each player's wallet balance, lifetime spending, net profit, win/loss record, and win rate.
 * Use `/public/users.php` to search for other bettors and view their public profiles. Private profiles only reveal usernames and join dates until the owner makes them public again.
 * The new settings page lets users toggle their profile visibility and permanently delete their account (along with its wallets and bets) after confirming their username.
+
+## Price alerts and notifications
+
+* Event pages include a **Set a price alert** form underneath the bet slip. Choose a market selection, enter your target odds (American format such as `+160` or decimal like `2.6`), and the system will watch for price updates.
+* Visit `/public/tracked.php` or click the **Tracked events** button on your account overview to review and remove alerts. Each row shows the target odds, latest notification time, and a quick link back to the event.
+* When odds meet or beat your target, the importer scripts create an entry in `/public/notifications.php`. Open that page (or use the navigation link) to view, mark as read, or clear alerts. Unread counts also surface in the global navigation bar.

@@ -66,7 +66,13 @@ $netProfitClass = $netProfit > 0 ? 'text-success' : ($netProfit < 0 ? 'text-dang
       <h1 class="h3 mb-1">Account overview</h1>
       <p class="text-muted mb-0">Welcome back, <?= htmlspecialchars($account['username'] ?? '') ?>.</p>
     </div>
-    <span class="badge bg-secondary align-self-center"><?= htmlspecialchars($visibility) ?></span>
+    <div class="text-end">
+      <span class="badge bg-secondary align-self-start d-inline-block mb-2"><?= htmlspecialchars($visibility) ?></span>
+      <div>
+        <a class="btn btn-sm btn-outline-primary" href="/sportsbet/public/tracked.php">Tracked events</a>
+        <a class="btn btn-sm btn-outline-secondary ms-2" href="/sportsbet/public/notifications.php">Notifications</a>
+      </div>
+    </div>
   </div>
 
   <div class="row g-4 mb-4">

@@ -5,11 +5,13 @@ require_once __DIR__ . '/../../src/bootstrap.php';
 // optional: compute wallet for header if logged in
 $headerUser = current_user();
 $headerBalance = null;
+$headerUnreadNotifications = 0;
 if ($headerUser) {
   $s = $pdo->prepare('SELECT balance FROM wallets WHERE user_id = ? LIMIT 1');
   $s->execute([$headerUser['id']]);
   $w = $s->fetch();
   $headerBalance = $w ? (float)$w['balance'] : 0.0;
+  $headerUnreadNotifications = fetch_unread_notifications_count($pdo, (int)$headerUser['id']);
 }
 ?>
 <!doctype html>
@@ -41,6 +43,12 @@ if ($headerUser) {
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/sports.php">Sports</a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/events.php">Events</a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/my_bets.php">My Bets</a></li>
+          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/tracked.php">Tracked</a></li>
+          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/notifications.php">Notifications
+            <?php if ($headerUnreadNotifications > 0): ?>
+              <span class="badge text-bg-danger ms-1"><?= (int) $headerUnreadNotifications ?></span>
+            <?php endif; ?>
+          </a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/leaderboard.php">Leaderboard</a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/users.php">User search</a></li>
           <li class="nav-item"><a class="nav-link" href="/sportsbet/public/settings.php">Settings</a></li>
