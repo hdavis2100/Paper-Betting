@@ -88,32 +88,48 @@ function fetch_event_score(
 ): ?array {
   $base = sprintf('https://api.the-odds-api.com/v4/sports/%s/scores', rawurlencode($sport));
 
-  $directQuery = http_build_query([
-    'eventIds' => $eventId,
-    'dateFormat' => 'iso',
-    'apiKey' => $apiKey,
-  ], '', '&', PHP_QUERY_RFC3986);
-  $directUrl = $base . '?' . $directQuery;
+  $directLookups = [
+    ['param' => 'eventId', 'label' => 'eventId'],
+    ['param' => 'eventIds', 'label' => 'eventIds'],
+  ];
 
-  $ch = curl_init($directUrl);
-  curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 25]);
-  $resp = curl_exec($ch);
-  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-  curl_close($ch);
+  foreach ($directLookups as $variant) {
+    $query = http_build_query([
+      $variant['param'] => $eventId,
+      'dateFormat' => 'iso',
+      'apiKey' => $apiKey,
+    ], '', '&', PHP_QUERY_RFC3986);
+    $url = $base . '?' . $query;
 
-  if (!is_string($resp) || $code !== 200) {
-    debug_log(sprintf('[event:%s] direct eventIds lookup returned HTTP %d.', $eventId, $code));
-  } else {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 25]);
+    $resp = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if (!is_string($resp) || $code !== 200) {
+      $snippet = '';
+      if (is_string($resp) && $resp !== '') {
+        $snippet = ' Body: ' . substr(trim($resp), 0, 120);
+      }
+      debug_log(sprintf('[event:%s] %s lookup returned HTTP %d.%s', $eventId, $variant['label'], $code, $snippet));
+      continue;
+    }
+
     $decoded = json_decode($resp, true);
-    if (is_array($decoded)) {
-      foreach ($decoded as $entry) {
-        if (is_array($entry) && ($entry['id'] ?? null) === $eventId) {
-          debug_log(sprintf('[event:%s] settled via direct eventIds lookup.', $eventId));
-          return $entry;
-        }
+    if (!is_array($decoded)) {
+      debug_log(sprintf('[event:%s] %s lookup yielded invalid JSON.', $eventId, $variant['label']));
+      continue;
+    }
+
+    foreach ($decoded as $entry) {
+      if (is_array($entry) && ($entry['id'] ?? null) === $eventId) {
+        debug_log(sprintf('[event:%s] settled via %s lookup.', $eventId, $variant['label']));
+        return $entry;
       }
     }
-    debug_log(sprintf('[event:%s] direct eventIds lookup did not include event.', $eventId));
+
+    debug_log(sprintf('[event:%s] %s lookup did not include event.', $eventId, $variant['label']));
   }
 
   if ($commenceTime === null) {
