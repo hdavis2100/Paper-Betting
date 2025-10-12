@@ -12,6 +12,7 @@ declare(strict_types=1);
 require __DIR__ . '/db.php';
 require __DIR__ . '/schema.php';
 require __DIR__ . '/tracking.php';
+require __DIR__ . '/http.php';
 
 ensure_app_schema($pdo);
 
@@ -99,19 +100,12 @@ foreach ($sports as $sportKey) {
     urlencode($sportKey), urlencode(REGION), urlencode(MARKETS), urlencode($apiKey)
   );
 
-  $ch = curl_init($url);
-  curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_TIMEOUT => 25,
-  ]);
-  $resp = curl_exec($ch);
-  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-  $err  = curl_error($ch);
-  curl_close($ch);
+  [$code, $resp, $headers, $err] = oddsapi_request($url, 'odds:' . $sportKey, [CURLOPT_TIMEOUT => 25]);
 
-  if ($resp === false || $code !== 200) {
-    // Don’t abort the whole run; move to next sport.
-    fwrite(STDERR, "[{$sportKey}] Fetch failed: HTTP {$code} {$err}\nResponse: {$resp}\n");
+  if ($resp === null || $code !== 200) {
+    $remain = $headers['x-requests-remaining'] ?? $headers['requests-remaining'] ?? 'n/a';
+    $used   = $headers['x-requests-used']      ?? $headers['requests-used']      ?? 'n/a';
+    fwrite(STDERR, "[{$sportKey}] Fetch failed: HTTP {$code} " . ($err ?? '') . " | remaining={$remain} used={$used}\nResponse: " . substr((string)$resp, 0, 300) . "\n");
     continue;
   }
 

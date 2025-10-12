@@ -11,6 +11,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/db.php';
+require __DIR__ . '/http.php';
 
 $config = require '/var/www/secure_config/sportsbet_config.php';
 $apiKey = $config['odds_api_key'] ?? '';
@@ -29,6 +30,7 @@ const DAYS_FROM_DEFAULT = 7;
  *   --days-from=N              Override the score lookback window.
  *   --include-upcoming         Inspect bets even if the event has not started.
  *   --dump-scores              Print the fetched API score summary for matched events.
+ *   --debug                    Emit verbose settlement diagnostics to stdout.
  */
 $cliOpts = getopt('', [
   'sport::',
@@ -36,12 +38,21 @@ $cliOpts = getopt('', [
   'days-from::',
   'include-upcoming',
   'dump-scores',
+  'debug',
 ]);
 
 $sportFilter = $cliOpts['sport'] ?? null;
 $eventFilter = $cliOpts['event'] ?? null;
 $includeUpcoming = array_key_exists('include-upcoming', $cliOpts);
 $dumpScores = array_key_exists('dump-scores', $cliOpts);
+$debugMode = array_key_exists('debug', $cliOpts);
+
+function debug_log(string $message): void {
+  global $debugMode;
+  if ($debugMode) {
+    echo $message . "\n";
+  }
+}
 
 $daysFrom = DAYS_FROM_DEFAULT;
 if (isset($cliOpts['days-from'])) {
@@ -52,6 +63,180 @@ if (isset($cliOpts['days-from'])) {
 }
 
 /** 1) Gather unsettled events grouped by sport */
+function normalize_team_label(string $name): string {
+  $converted = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $name);
+  if ($converted === false) {
+    $converted = $name;
+  }
+  $converted = strtolower($converted);
+  return preg_replace('/[^a-z0-9]/', '', $converted);
+}
+
+/**
+ * Attempt to retrieve a single event's score record directly from TheOddsAPI.
+ *
+ * The API supports both `eventIds=` lookups and commence-time windows. We try
+ * the direct event-id query first because it returns settled fights well
+ * beyond the default 3-day window, which is crucial for combat sports that can
+ * fall off the bulk list quickly. If that fails (e.g. the provider hasn't
+ * indexed the id yet) we fall back to a commence-time bounded search.
+ */
+function fetch_event_score(
+  string $sport,
+  string $eventId,
+  string $apiKey,
+  ?string $commenceTime
+): ?array {
+  $base = sprintf('https://api.the-odds-api.com/v4/sports/%s/scores', rawurlencode($sport));
+
+  $directLookups = [
+    ['param' => 'eventId', 'label' => 'eventId'],
+    ['param' => 'eventIds', 'label' => 'eventIds'],
+  ];
+
+  foreach ($directLookups as $variant) {
+    $query = http_build_query([
+      $variant['param'] => $eventId,
+      'dateFormat' => 'iso',
+      'apiKey' => $apiKey,
+    ], '', '&', PHP_QUERY_RFC3986);
+    $url = $base . '?' . $query;
+
+    [$code, $resp, , $err] = oddsapi_request($url, sprintf('score:%s:%s', $sport, $variant['label']), [CURLOPT_TIMEOUT => 25]);
+
+    if (!is_string($resp) || $code !== 200) {
+      $snippet = '';
+      if (is_string($resp) && $resp !== '') {
+        $snippet = ' Body: ' . substr(trim($resp), 0, 120);
+      }
+      if ($err) {
+        $snippet .= ' Err: ' . $err;
+      }
+      debug_log(sprintf('[event:%s] %s lookup returned HTTP %d.%s', $eventId, $variant['label'], $code, $snippet));
+      continue;
+    }
+
+    $decoded = json_decode($resp, true);
+    if (!is_array($decoded)) {
+      debug_log(sprintf('[event:%s] %s lookup yielded invalid JSON.', $eventId, $variant['label']));
+      continue;
+    }
+
+    foreach ($decoded as $entry) {
+      if (is_array($entry) && ($entry['id'] ?? null) === $eventId) {
+        debug_log(sprintf('[event:%s] settled via %s lookup.', $eventId, $variant['label']));
+        return $entry;
+      }
+    }
+
+    debug_log(sprintf('[event:%s] %s lookup did not include event.', $eventId, $variant['label']));
+  }
+
+  if ($commenceTime === null) {
+    return null;
+  }
+
+  try {
+    $commence = new DateTimeImmutable($commenceTime, new DateTimeZone('UTC'));
+  } catch (Exception $e) {
+    return null;
+  }
+
+  // Expand to a +/- 3 day window to account for reschedules and late data
+  // publication (common with overseas MMA/boxing cards).
+  $from = $commence->sub(new DateInterval('P3D'))->format('c');
+  $to = $commence->add(new DateInterval('P3D'))->format('c');
+
+  $windowQuery = http_build_query([
+    'commenceTimeFrom' => $from,
+    'commenceTimeTo' => $to,
+    'dateFormat' => 'iso',
+    'apiKey' => $apiKey,
+  ], '', '&', PHP_QUERY_RFC3986);
+  $windowUrl = $base . '?' . $windowQuery;
+
+  [$code, $resp, , $err] = oddsapi_request($windowUrl, sprintf('score:%s:window', $sport), [CURLOPT_TIMEOUT => 25]);
+
+  if (!is_string($resp) || $code !== 200) {
+    $extra = $err ? ' Err: ' . $err : '';
+    debug_log(sprintf('[event:%s] commenceTime window lookup returned HTTP %d.%s', $eventId, $code, $extra));
+    return null;
+  }
+
+  $decoded = json_decode($resp, true);
+  if (!is_array($decoded)) {
+    debug_log(sprintf('[event:%s] commenceTime window lookup yielded invalid JSON.', $eventId));
+    return null;
+  }
+
+  foreach ($decoded as $entry) {
+    if (!is_array($entry)) {
+      continue;
+    }
+    if (($entry['id'] ?? null) === $eventId) {
+      debug_log(sprintf('[event:%s] settled via commenceTime window lookup.', $eventId));
+      return $entry;
+    }
+  }
+
+  debug_log(sprintf('[event:%s] commenceTime window lookup did not include event.', $eventId));
+  return null;
+}
+
+function identify_competitor(string $slug, string $homeSlug, string $awaySlug): ?string {
+  if ($slug !== '' && $slug === $homeSlug) {
+    return 'home';
+  }
+  if ($slug !== '' && $slug === $awaySlug) {
+    return 'away';
+  }
+
+  if ($slug !== '' && $homeSlug !== '' && levenshtein($slug, $homeSlug) <= 2) {
+    return 'home';
+  }
+  if ($slug !== '' && $awaySlug !== '' && levenshtein($slug, $awaySlug) <= 2) {
+    return 'away';
+  }
+
+  return null;
+}
+
+function parse_numeric_score($value): ?float {
+  if (is_int($value) || is_float($value)) {
+    return (float)$value;
+  }
+  if (is_string($value)) {
+    $trimmed = trim($value);
+    if ($trimmed === '') {
+      return null;
+    }
+    if (is_numeric($trimmed)) {
+      return (float)$trimmed;
+    }
+  }
+  return null;
+}
+
+function interpret_result_keyword($value): ?string {
+  if (!is_string($value)) {
+    return null;
+  }
+  $norm = strtolower(trim($value));
+  if ($norm === '') {
+    return null;
+  }
+  if (in_array($norm, ['win', 'winner', 'won'], true)) {
+    return 'win';
+  }
+  if (in_array($norm, ['loss', 'lose', 'lost', 'loser'], true)) {
+    return 'loss';
+  }
+  if (in_array($norm, ['draw', 'tie', 'push', 'no contest', 'no-contest', 'no_contest', 'no result', 'no-result'], true)) {
+    return 'tie';
+  }
+  return null;
+}
+
 $conditions = ["b.status = 'pending'"];
 $params = [];
 if (!$includeUpcoming) {
@@ -122,6 +307,7 @@ $updateBet = $pdo->prepare("UPDATE bets SET status = ?, settled_at = NOW(), actu
 $totalSettled = 0;
 
 foreach ($bySport as $sport => $events) {
+  debug_log(sprintf('[sport] %s (%d event(s) pending)', $sport, count($events)));
   // 2) Fetch recent scores for this sport
   $effectiveDaysFrom = max(1, min($daysFrom, 3));
   if ($effectiveDaysFrom !== $daysFrom && !$dumpScores) {
@@ -133,19 +319,16 @@ foreach ($bySport as $sport => $events) {
     rawurlencode($sport), $effectiveDaysFrom, urlencode($apiKey)
   );
 
-  $ch = curl_init($scoresUrl);
-  curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 25]);
-  $resp = curl_exec($ch);
-  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-  $err  = curl_error($ch);
-  curl_close($ch);
+  [$code, $resp, $headers, $err] = oddsapi_request($scoresUrl, 'scores:' . $sport, [CURLOPT_TIMEOUT => 25]);
 
-  if ($resp === false || $code !== 200) {
+  if ($resp === null || $code !== 200) {
     $bodySnippet = '';
     if (is_string($resp) && $resp !== '') {
       $bodySnippet = ' Body: ' . substr(trim($resp), 0, 300);
     }
-    fwrite(STDERR, "[{$sport}] Scores fetch failed: HTTP {$code} {$err}{$bodySnippet}\n");
+    $remain = $headers['x-requests-remaining'] ?? $headers['requests-remaining'] ?? 'n/a';
+    $used   = $headers['x-requests-used']      ?? $headers['requests-used']      ?? 'n/a';
+    fwrite(STDERR, "[{$sport}] Scores fetch failed: HTTP {$code} " . ($err ?? '') . " | remaining={$remain} used={$used}{$bodySnippet}\n");
     continue;
   }
 
@@ -167,16 +350,28 @@ foreach ($bySport as $sport => $events) {
     $eventId = $ev['event_id'];
     $home = $ev['home_team'];
     $away = $ev['away_team'];
+    $homeSlug = normalize_team_label($home);
+    $awaySlug = normalize_team_label($away);
 
     if (!isset($scoreMap[$eventId])) {
-      if ($dumpScores) {
-        echo "[{$sport}] Event {$eventId} not returned by scores API.\n";
+      debug_log(sprintf('[event] %s missing from API response; attempting direct fetch.', $eventId));
+      $fallback = fetch_event_score($sport, $eventId, $apiKey, $ev['commence_time'] ?? null);
+      if ($fallback !== null) {
+        debug_log(sprintf('[event] %s retrieved via dedicated event lookup.', $eventId));
+        $scoreMap[$eventId] = $fallback;
+      } else {
+        if ($dumpScores) {
+          echo "[{$sport}] Event {$eventId} not returned by scores API.\n";
+        }
+        debug_log(sprintf('[event] %s still missing after dedicated lookup; skipping settlement for now.', $eventId));
+        // No result yet; skip until next run
+        continue;
       }
-      // No result yet; skip until next run
-      continue;
     }
 
     $info = $scoreMap[$eventId];
+
+    debug_log(sprintf('[event] %s | %s vs %s | commence=%s', $eventId, $home, $away, (string)$ev['commence_time']));
 
     if ($dumpScores) {
       $homePrint = $info['home_score'] ?? 'n/a';
@@ -201,40 +396,136 @@ foreach ($bySport as $sport => $events) {
     $awayScore = null;
     $totalScore = null;
     $winner = null;
+    $winnerNameHints = [];
+    $orderedNumericScores = [];
+    $orderedTargets = [];
     if ($completed) {
       if (is_array($scoresArr)) {
         foreach ($scoresArr as $row) {
           if (!is_array($row)) continue;
           $name = $row['name'] ?? '';
           if ($name === '') continue;
-          $scoreVal = isset($row['score']) ? (float)$row['score'] : null;
-          if ($scoreVal === null) continue;
+          $slug = normalize_team_label($name);
+          $target = identify_competitor($slug, $homeSlug, $awaySlug);
+          $orderedTargets[] = $target;
 
-          if (strcasecmp($name, $home) === 0) {
-            $homeScore = $scoreVal;
-          } elseif (strcasecmp($name, $away) === 0) {
-            $awayScore = $scoreVal;
+          $scoreRaw = $row['score'] ?? null;
+          $scoreVal = parse_numeric_score($scoreRaw);
+          $orderedNumericScores[] = $scoreVal;
+
+          if ($scoreVal !== null) {
+            if ($target === 'home' && $homeScore === null) {
+              $homeScore = $scoreVal;
+            } elseif ($target === 'away' && $awayScore === null) {
+              $awayScore = $scoreVal;
+            }
+            continue;
+          }
+
+          $keyword = interpret_result_keyword($scoreRaw);
+          if ($keyword === 'win') {
+            if ($target === 'home') {
+              $winner = $home;
+            } elseif ($target === 'away') {
+              $winner = $away;
+            } else {
+              $winnerNameHints[] = $name;
+            }
+          } elseif ($keyword === 'loss') {
+            if ($target === 'home') {
+              $winner = $away;
+            } elseif ($target === 'away') {
+              $winner = $home;
+            }
+          } elseif ($keyword === 'tie') {
+            $winner = 'TIE';
           }
         }
       }
 
+      if (($homeScore === null || $awayScore === null) && $orderedNumericScores) {
+        foreach ($orderedNumericScores as $idx => $numeric) {
+          if ($numeric === null) {
+            continue;
+          }
+          $target = $orderedTargets[$idx] ?? null;
+          if ($target === 'home' && $homeScore === null) {
+            $homeScore = $numeric;
+          } elseif ($target === 'away' && $awayScore === null) {
+            $awayScore = $numeric;
+          }
+        }
+      }
+
+      if (($homeScore === null || $awayScore === null) && count($orderedNumericScores) === 2) {
+        if ($homeScore === null && $orderedNumericScores[0] !== null) {
+          $homeScore = $orderedNumericScores[0];
+        }
+        if ($awayScore === null && $orderedNumericScores[1] !== null) {
+          $awayScore = $orderedNumericScores[1];
+        }
+      }
+
       if ($homeScore === null && isset($info['home_score'])) {
-        $homeScore = (float)$info['home_score'];
+        $parsed = parse_numeric_score($info['home_score']);
+        if ($parsed !== null) {
+          $homeScore = $parsed;
+        } else {
+          $keyword = interpret_result_keyword($info['home_score']);
+          if ($keyword === 'win') {
+            $winner = $home;
+          } elseif ($keyword === 'loss') {
+            $winner = $away;
+          } elseif ($keyword === 'tie') {
+            $winner = 'TIE';
+          }
+        }
       }
       if ($awayScore === null && isset($info['away_score'])) {
-        $awayScore = (float)$info['away_score'];
+        $parsed = parse_numeric_score($info['away_score']);
+        if ($parsed !== null) {
+          $awayScore = $parsed;
+        } else {
+          $keyword = interpret_result_keyword($info['away_score']);
+          if ($keyword === 'win') {
+            $winner = $away;
+          } elseif ($keyword === 'loss') {
+            $winner = $home;
+          } elseif ($keyword === 'tie') {
+            $winner = 'TIE';
+          }
+        }
+      }
+
+      if ($winner === null && $winnerNameHints) {
+        foreach ($winnerNameHints as $hint) {
+          $hintSlug = normalize_team_label($hint);
+          $target = identify_competitor($hintSlug, $homeSlug, $awaySlug);
+          if ($target === 'home') {
+            $winner = $home;
+            break;
+          }
+          if ($target === 'away') {
+            $winner = $away;
+            break;
+          }
+        }
       }
 
       if ($homeScore !== null && $awayScore !== null) {
-        if ($homeScore > $awayScore) {
-          $winner = $home;
-        } elseif ($awayScore > $homeScore) {
-          $winner = $away;
-        } else {
-          $winner = 'TIE';
+        if ($winner === null) {
+          if ($homeScore > $awayScore) {
+            $winner = $home;
+          } elseif ($awayScore > $homeScore) {
+            $winner = $away;
+          } else {
+            $winner = 'TIE';
+          }
         }
         $totalScore = $homeScore + $awayScore;
       }
+    } else {
+      debug_log(sprintf('[event] %s still marked in-progress; completed flag is false.', $eventId));
     }
 
     // Settle all pending bets for this event
@@ -250,6 +541,7 @@ foreach ($bySport as $sport => $events) {
       $reason = '';
 
       if (!$completed) {
+        debug_log(sprintf('[bet] %s (user %d) skipped: event not completed.', $b['id'], $userId));
         continue;
       }
 
@@ -258,6 +550,7 @@ foreach ($bySport as $sport => $events) {
 
       if ($marketType === 'h2h') {
         if ($winner === null) {
+          debug_log(sprintf('[bet] %s pending: no winner resolved yet (homeScore=%s, awayScore=%s).', $b['id'], $homeScore !== null ? (string)$homeScore : 'null', $awayScore !== null ? (string)$awayScore : 'null'));
           continue;
         }
         if ($winner === 'TIE') {
@@ -275,6 +568,7 @@ foreach ($bySport as $sport => $events) {
         }
       } elseif ($marketType === 'spreads') {
         if ($homeScore === null || $awayScore === null || $lineValue === null) {
+          debug_log(sprintf('[bet] %s pending: spread requires scores (%s/%s) and line (%s).', $b['id'], $homeScore !== null ? (string)$homeScore : 'null', $awayScore !== null ? (string)$awayScore : 'null', $lineValue !== null ? (string)$lineValue : 'null'));
           continue;
         }
         if (strcasecmp($b['outcome'], $home) === 0) {
@@ -302,6 +596,7 @@ foreach ($bySport as $sport => $events) {
         }
       } elseif ($marketType === 'totals') {
         if ($totalScore === null || $lineValue === null) {
+          debug_log(sprintf('[bet] %s pending: total requires aggregate score (%s) and line (%s).', $b['id'], $totalScore !== null ? (string)$totalScore : 'null', $lineValue !== null ? (string)$lineValue : 'null'));
           continue;
         }
         $selection = strtolower($b['outcome']);
@@ -356,6 +651,7 @@ foreach ($bySport as $sport => $events) {
 
         $pdo->commit();
         $totalSettled++;
+        debug_log(sprintf('[bet] %s settled as %s (payout %.2f).', $b['id'], $newStatus, $payout));
       } catch (Throwable $e) {
         $pdo->rollBack();
         fwrite(STDERR, "Settle failed for bet {$b['id']}: {$e->getMessage()}\n");

@@ -48,6 +48,14 @@ config keys yet. Existing bets are safe to keep: wager tickets store the
 decimal price that was used at placement time, so deleting non-preferred
 odds rows does not retroactively change or void previously placed bets.
 
+### Tracking API usage
+
+Every script that talks to TheOddsAPI (`fetch_odds.php`,
+`fetch_all_catalog.php`, and `settle_bets1.php`) prints the
+`requests-used` and `requests-remaining` counters returned by the API so
+you can monitor consumption on each run. The catalog fetcher always hits
+the live endpoints to ensure newly posted odds are imported right away.
+
 ## Removing unwanted markets
 
 If you no longer want to keep a market such as `h2h_lay`, you can purge

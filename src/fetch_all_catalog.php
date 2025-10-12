@@ -18,6 +18,7 @@ declare(strict_types=1);
 require __DIR__ . '/db.php';
 require __DIR__ . '/schema.php';
 require __DIR__ . '/tracking.php';
+require __DIR__ . '/http.php';
 
 ensure_app_schema($pdo);
 
@@ -77,45 +78,6 @@ $SPORTS_OVERRIDE = isset($cli['sports'])
   ? array_filter(array_map('trim', explode(',', $cli['sports'])))
   : null;
 
-/* ---------- Helpers ---------- */
-function http_get(string $url): array {
-  $ch = curl_init($url);
-  curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_TIMEOUT => 30,
-    CURLOPT_FOLLOWLOCATION => true,
-    CURLOPT_HEADER => true,
-  ]);
-  $raw = curl_exec($ch);
-  $err = curl_error($ch);
-  $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-  curl_close($ch);
-
-  if ($raw === false) {
-    return [$code ?: 0, null, [], $err ?: 'curl_exec failed'];
-  }
-
-  // Split headers/body
-  $parts = preg_split("/\r?\n\r?\n/", $raw, 2);
-  $headersRaw = $parts[0] ?? '';
-  $body = $parts[1] ?? '';
-  $headers = [];
-  foreach (explode("\n", $headersRaw) as $line) {
-    $line = trim($line);
-    if (strpos($line, ':') !== false) {
-      [$h, $v] = explode(':', $line, 2);
-      $headers[strtolower(trim($h))] = trim($v);
-    }
-  }
-  return [$code, $body, $headers, $err ?: null];
-}
-
-function table_exists(PDO $pdo, string $name): bool {
-  $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?");
-  $stmt->execute([$name]);
-  return (bool)$stmt->fetchColumn();
-}
-
 /* ---------- Prepare statements (idempotent upserts) ---------- */
 $canBookmakers = table_exists($pdo, 'bookmakers');
 $canMarkets    = table_exists($pdo, 'markets');
@@ -162,7 +124,7 @@ if ($canMarkets) {
 
 /* ---------- Step 1: fetch sports list ---------- */
 $sportsUrl = $BASE . '/sports/?apiKey=' . urlencode($apiKey);
-[$code, $body, $hdr, $err] = http_get($sportsUrl);
+[$code, $body, $sportsHeaders, $err] = oddsapi_request($sportsUrl, 'sports-list');
 if ($code !== 200 || !$body) {
   fwrite(STDERR, "ERROR fetching sports list: HTTP $code " . ($err ?? '') . "\nBody: " . substr((string)$body, 0, 500) . "\n");
   exit(1);
@@ -214,7 +176,8 @@ foreach ($activeSports as $sportKey) {
     rawurlencode($apiKey)
   );
 
-  [$c2, $b2, $h2, $e2] = http_get($oddsUrl);
+  [$c2, $b2, $h2, $e2] = oddsapi_request($oddsUrl, 'odds:' . $sportKey);
+
   if ($c2 !== 200 || !$b2) {
     $remain = $h2['x-requests-remaining'] ?? $h2['requests-remaining'] ?? 'n/a';
     $used   = $h2['x-requests-used']      ?? $h2['requests-used']      ?? 'n/a';
