@@ -18,6 +18,7 @@ declare(strict_types=1);
 require __DIR__ . '/db.php';
 require __DIR__ . '/schema.php';
 require __DIR__ . '/tracking.php';
+require __DIR__ . '/http.php';
 
 ensure_app_schema($pdo);
 
@@ -53,6 +54,44 @@ for ($i = 1; $i < $argc; $i++) {
 
 $bookmakerFilterActive = $preferredBookmakerKey !== null || $preferredBookmakerTitle !== null;
 
+$cacheTtl = isset($cli['cache_ttl']) ? max(0, (int)$cli['cache_ttl']) : (int)($config['catalog_cache_ttl_seconds'] ?? 900);
+$cacheDir = $config['catalog_cache_dir'] ?? (sys_get_temp_dir() . '/sportsbet_odds_cache');
+
+if ($cacheTtl > 0 && !is_dir($cacheDir)) {
+  if (!@mkdir($cacheDir, 0777, true) && !is_dir($cacheDir)) {
+    fwrite(STDERR, "WARN: Unable to create cache directory {$cacheDir}; disabling cache.\n");
+    $cacheTtl = 0;
+  }
+}
+
+function load_cached_response(string $cacheDir, string $key, int $ttl): ?array {
+  if ($ttl <= 0) {
+    return null;
+  }
+  $path = rtrim($cacheDir, '/\\') . '/' . $key . '.json';
+  if (!is_file($path)) {
+    return null;
+  }
+  $json = @file_get_contents($path);
+  if ($json === false) {
+    return null;
+  }
+  $payload = json_decode($json, true);
+  if (!is_array($payload)) {
+    return null;
+  }
+  $fetchedAt = isset($payload['fetched_at']) ? (int)$payload['fetched_at'] : 0;
+  if ($fetchedAt === 0 || (time() - $fetchedAt) > $ttl) {
+    return null;
+  }
+  return $payload;
+}
+
+function store_cached_response(string $cacheDir, string $key, array $payload): void {
+  $path = rtrim($cacheDir, '/\\') . '/' . $key . '.json';
+  @file_put_contents($path, json_encode($payload), LOCK_EX);
+}
+
 $REGIONS = $cli['regions'] ?? 'us,uk,eu';                // adjust as you like
 $marketsInput = $cli['markets'] ?? 'h2h,spreads,totals'; // add btts, outrights, draw_no_bet if needed
 $BLOCKED_MARKETS = ['h2h_lay'];
@@ -78,38 +117,6 @@ $SPORTS_OVERRIDE = isset($cli['sports'])
   : null;
 
 /* ---------- Helpers ---------- */
-function http_get(string $url): array {
-  $ch = curl_init($url);
-  curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_TIMEOUT => 30,
-    CURLOPT_FOLLOWLOCATION => true,
-    CURLOPT_HEADER => true,
-  ]);
-  $raw = curl_exec($ch);
-  $err = curl_error($ch);
-  $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-  curl_close($ch);
-
-  if ($raw === false) {
-    return [$code ?: 0, null, [], $err ?: 'curl_exec failed'];
-  }
-
-  // Split headers/body
-  $parts = preg_split("/\r?\n\r?\n/", $raw, 2);
-  $headersRaw = $parts[0] ?? '';
-  $body = $parts[1] ?? '';
-  $headers = [];
-  foreach (explode("\n", $headersRaw) as $line) {
-    $line = trim($line);
-    if (strpos($line, ':') !== false) {
-      [$h, $v] = explode(':', $line, 2);
-      $headers[strtolower(trim($h))] = trim($v);
-    }
-  }
-  return [$code, $body, $headers, $err ?: null];
-}
-
 function table_exists(PDO $pdo, string $name): bool {
   $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?");
   $stmt->execute([$name]);
@@ -162,7 +169,27 @@ if ($canMarkets) {
 
 /* ---------- Step 1: fetch sports list ---------- */
 $sportsUrl = $BASE . '/sports/?apiKey=' . urlencode($apiKey);
-[$code, $body, $hdr, $err] = http_get($sportsUrl);
+$sportsCacheKey = 'sports_list';
+$sportsPayload = load_cached_response($cacheDir, $sportsCacheKey, $cacheTtl);
+$sportsHeaders = [];
+if ($sportsPayload !== null) {
+  $age = time() - (int)$sportsPayload['fetched_at'];
+  echo sprintf('[cache:sports] using cached sports list (%ds old)%s', $age, PHP_EOL);
+  $body = (string)($sportsPayload['body'] ?? '');
+  $code = (int)($sportsPayload['status'] ?? 200);
+  $sportsHeaders = is_array($sportsPayload['headers'] ?? null) ? $sportsPayload['headers'] : [];
+  $err = null;
+} else {
+  [$code, $body, $sportsHeaders, $err] = oddsapi_request($sportsUrl, 'sports-list');
+  if ($code === 200 && $cacheTtl > 0 && $body !== null) {
+    store_cached_response($cacheDir, $sportsCacheKey, [
+      'status' => $code,
+      'fetched_at' => time(),
+      'body' => $body,
+      'headers' => $sportsHeaders,
+    ]);
+  }
+}
 if ($code !== 200 || !$body) {
   fwrite(STDERR, "ERROR fetching sports list: HTTP $code " . ($err ?? '') . "\nBody: " . substr((string)$body, 0, 500) . "\n");
   exit(1);
@@ -214,7 +241,28 @@ foreach ($activeSports as $sportKey) {
     rawurlencode($apiKey)
   );
 
-  [$c2, $b2, $h2, $e2] = http_get($oddsUrl);
+  $cacheKey = 'odds_' . md5($oddsUrl);
+  $payload = load_cached_response($cacheDir, $cacheKey, $cacheTtl);
+  $h2 = [];
+  if ($payload !== null) {
+    $age = time() - (int)$payload['fetched_at'];
+    echo sprintf('[cache:%s] using cached odds (%ds old)%s', $sportKey, $age, PHP_EOL);
+    $c2 = (int)($payload['status'] ?? 200);
+    $b2 = (string)($payload['body'] ?? '');
+    $h2 = is_array($payload['headers'] ?? null) ? $payload['headers'] : [];
+    $e2 = null;
+  } else {
+    [$c2, $b2, $h2, $e2] = oddsapi_request($oddsUrl, 'odds:' . $sportKey);
+    if ($c2 === 200 && $cacheTtl > 0 && $b2 !== null) {
+      store_cached_response($cacheDir, $cacheKey, [
+        'status' => $c2,
+        'fetched_at' => time(),
+        'body' => $b2,
+        'headers' => $h2,
+      ]);
+    }
+  }
+
   if ($c2 !== 200 || !$b2) {
     $remain = $h2['x-requests-remaining'] ?? $h2['requests-remaining'] ?? 'n/a';
     $used   = $h2['x-requests-used']      ?? $h2['requests-used']      ?? 'n/a';

@@ -11,6 +11,7 @@ declare(strict_types=1);
  */
 
 require __DIR__ . '/db.php';
+require __DIR__ . '/http.php';
 
 $config = require '/var/www/secure_config/sportsbet_config.php';
 $apiKey = $config['odds_api_key'] ?? '';
@@ -101,16 +102,15 @@ function fetch_event_score(
     ], '', '&', PHP_QUERY_RFC3986);
     $url = $base . '?' . $query;
 
-    $ch = curl_init($url);
-    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 25]);
-    $resp = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    [$code, $resp, , $err] = oddsapi_request($url, sprintf('score:%s:%s', $sport, $variant['label']), [CURLOPT_TIMEOUT => 25]);
 
     if (!is_string($resp) || $code !== 200) {
       $snippet = '';
       if (is_string($resp) && $resp !== '') {
         $snippet = ' Body: ' . substr(trim($resp), 0, 120);
+      }
+      if ($err) {
+        $snippet .= ' Err: ' . $err;
       }
       debug_log(sprintf('[event:%s] %s lookup returned HTTP %d.%s', $eventId, $variant['label'], $code, $snippet));
       continue;
@@ -155,14 +155,11 @@ function fetch_event_score(
   ], '', '&', PHP_QUERY_RFC3986);
   $windowUrl = $base . '?' . $windowQuery;
 
-  $ch = curl_init($windowUrl);
-  curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 25]);
-  $resp = curl_exec($ch);
-  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-  curl_close($ch);
+  [$code, $resp, , $err] = oddsapi_request($windowUrl, sprintf('score:%s:window', $sport), [CURLOPT_TIMEOUT => 25]);
 
   if (!is_string($resp) || $code !== 200) {
-    debug_log(sprintf('[event:%s] commenceTime window lookup returned HTTP %d.', $eventId, $code));
+    $extra = $err ? ' Err: ' . $err : '';
+    debug_log(sprintf('[event:%s] commenceTime window lookup returned HTTP %d.%s', $eventId, $code, $extra));
     return null;
   }
 
@@ -322,19 +319,16 @@ foreach ($bySport as $sport => $events) {
     rawurlencode($sport), $effectiveDaysFrom, urlencode($apiKey)
   );
 
-  $ch = curl_init($scoresUrl);
-  curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 25]);
-  $resp = curl_exec($ch);
-  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-  $err  = curl_error($ch);
-  curl_close($ch);
+  [$code, $resp, $headers, $err] = oddsapi_request($scoresUrl, 'scores:' . $sport, [CURLOPT_TIMEOUT => 25]);
 
-  if ($resp === false || $code !== 200) {
+  if ($resp === null || $code !== 200) {
     $bodySnippet = '';
     if (is_string($resp) && $resp !== '') {
       $bodySnippet = ' Body: ' . substr(trim($resp), 0, 300);
     }
-    fwrite(STDERR, "[{$sport}] Scores fetch failed: HTTP {$code} {$err}{$bodySnippet}\n");
+    $remain = $headers['x-requests-remaining'] ?? $headers['requests-remaining'] ?? 'n/a';
+    $used   = $headers['x-requests-used']      ?? $headers['requests-used']      ?? 'n/a';
+    fwrite(STDERR, "[{$sport}] Scores fetch failed: HTTP {$code} " . ($err ?? '') . " | remaining={$remain} used={$used}{$bodySnippet}\n");
     continue;
   }
 
