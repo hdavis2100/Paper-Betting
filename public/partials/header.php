@@ -5,11 +5,13 @@ require_once __DIR__ . '/../../src/bootstrap.php';
 // optional: compute wallet for header if logged in
 $headerUser = current_user();
 $headerBalance = null;
+$headerUnreadNotifications = 0;
 if ($headerUser) {
   $s = $pdo->prepare('SELECT balance FROM wallets WHERE user_id = ? LIMIT 1');
   $s->execute([$headerUser['id']]);
   $w = $s->fetch();
   $headerBalance = $w ? (float)$w['balance'] : 0.0;
+  $headerUnreadNotifications = fetch_unread_notifications_count($pdo, (int)$headerUser['id']);
 }
 ?>
 <!doctype html>
@@ -34,63 +36,43 @@ if ($headerUser) {
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
       <span class="navbar-toggler-icon"></span>
     </button>
-    <div id="mainNav" class="collapse navbar-collapse">
-      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-        <?php if ($headerUser): ?>
-          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/sports.php">Sports</a></li>
-          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/events.php">Events</a></li>
-          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/my_bets.php">My Bets</a></li>
-          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/leaderboard.php">Leaderboard</a></li>
-        <?php endif; ?>
-      </ul>
-        <form class="d-flex position-relative" role="search" action="/sportsbet/public/search.php" method="get">
-        <input class="form-control me-2" type="search" placeholder="Search teams..." id="search-box" name="q" autocomplete="off">
-        <ul id="suggestions" class="list-group position-absolute" style="top:100%;z-index:1000;width:100%;"></ul>
-        </form>
+      <div id="mainNav" class="collapse navbar-collapse">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <?php if ($headerUser): ?>
+            <li class="nav-item"><a class="nav-link" href="/sportsbet/public/sports.php">Sports</a></li>
+            <li class="nav-item"><a class="nav-link" href="/sportsbet/public/events.php">Events</a></li>
+            <li class="nav-item"><a class="nav-link" href="/sportsbet/public/leaderboard.php">Leaderboard</a></li>
+            <li class="nav-item"><a class="nav-link" href="/sportsbet/public/search.php">Search</a></li>
+          <?php endif; ?>
+        </ul>
 
-        <script>
-        let timer;
-        const box = document.getElementById('search-box');
-        const list = document.getElementById('suggestions');
-        if (box) {
-        box.addEventListener('input', () => {
-            clearTimeout(timer);
-            const q = box.value.trim();
-            if (q.length < 2) { list.innerHTML = ''; return; }
-            timer = setTimeout(async () => {
-            const res = await fetch(`/sportsbet/public/search_suggest.php?q=${encodeURIComponent(q)}`);
-            const data = await res.json();
-            list.innerHTML = data.map(r =>
-                `<li class="list-group-item">
-                <a href="/sportsbet/public/bet.php?event_id=${r.event_id}">
-                    ${r.home_team} vs ${r.away_team}
-                </a>
-                </li>`
-            ).join('');
-            }, 200);
-        });
-        document.addEventListener('click', e => {
-            if (!list.contains(e.target) && e.target !== box) list.innerHTML = '';
-        });
-        }
-        </script>
-
-      <ul class="navbar-nav">
         <?php if ($headerUser): ?>
-          <li class="nav-item">
-            <span class="navbar-text me-3">
-              Hello, <strong><?= htmlspecialchars($headerUser['username']) ?></strong>
-              <?php if ($headerBalance !== null): ?>
-                &nbsp;|&nbsp; Balance: <strong><?= number_format($headerBalance, 2) ?></strong>
+          <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center">
+            <li class="nav-item"><a class="nav-link" href="/sportsbet/public/index.php">Account</a></li>
+            <li class="nav-item"><a class="nav-link" href="/sportsbet/public/my_bets.php">My Bets</a></li>
+            <li class="nav-item"><a class="nav-link" href="/sportsbet/public/tracked.php">Tracked</a></li>
+            <li class="nav-item"><a class="nav-link" href="/sportsbet/public/notifications.php">Notifications
+              <?php if ($headerUnreadNotifications > 0): ?>
+                <span class="badge text-bg-danger ms-1"><?= (int) $headerUnreadNotifications ?></span>
               <?php endif; ?>
-            </span>
-          </li>
-          <li class="nav-item"><a class="btn btn-outline-secondary btn-sm" href="/sportsbet/public/logout.php">Logout</a></li>
+            </a></li>
+            <li class="nav-item"><a class="nav-link" href="/sportsbet/public/settings.php">Settings</a></li>
+            <li class="nav-item">
+              <span class="navbar-text ms-lg-3 me-lg-2">
+                Hello, <strong><?= htmlspecialchars($headerUser['username']) ?></strong>
+                <?php if ($headerBalance !== null): ?>
+                  &nbsp;|&nbsp; Balance: <strong><?= number_format($headerBalance, 2) ?></strong>
+                <?php endif; ?>
+              </span>
+            </li>
+            <li class="nav-item"><a class="btn btn-outline-secondary btn-sm" href="/sportsbet/public/logout.php">Logout</a></li>
+          </ul>
         <?php else: ?>
-          <li class="nav-item"><a class="btn btn-primary btn-sm" href="/sportsbet/public/login.php">Login</a></li>
+          <ul class="navbar-nav ms-auto">
+            <li class="nav-item"><a class="btn btn-primary btn-sm" href="/sportsbet/public/login.php">Login</a></li>
+          </ul>
         <?php endif; ?>
-      </ul>
-    </div>
+      </div>
   </div>
 </nav>
 <main class="container my-4">
