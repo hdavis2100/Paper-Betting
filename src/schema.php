@@ -35,6 +35,36 @@ function ensure_column(PDO $pdo, string $table, string $column, string $definiti
     $pdo->exec($sql);
 }
 
+function index_exists(PDO $pdo, string $table, string $index): bool
+{
+    static $cache = [];
+    $db = $pdo->query('SELECT DATABASE()')->fetchColumn();
+    $key = strtolower($db . '.' . $table . '.' . $index);
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
+    }
+
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?'
+    );
+    $stmt->execute([$table, $index]);
+    $exists = (bool) $stmt->fetchColumn();
+    $cache[$key] = $exists;
+
+    return $exists;
+}
+
+function ensure_fulltext_index(PDO $pdo, string $table, string $index, array $columns): void
+{
+    if (index_exists($pdo, $table, $index)) {
+        return;
+    }
+
+    $cols = array_map(static fn($col) => sprintf('`%s`', $col), $columns);
+    $sql = sprintf('ALTER TABLE `%s` ADD FULLTEXT `%s` (%s)', $table, $index, implode(', ', $cols));
+    $pdo->exec($sql);
+}
+
 function table_exists(PDO $pdo, string $table): bool
 {
     static $cache = [];
@@ -89,6 +119,11 @@ function ensure_app_schema(PDO $pdo): void
 
     try {
         ensure_column($pdo, 'users', 'profile_public', 'TINYINT(1) NOT NULL DEFAULT 1 AFTER `created_at`');
+    } catch (Throwable $e) {
+    }
+
+    try {
+        ensure_fulltext_index($pdo, 'users', 'ft_users_username', ['username']);
     } catch (Throwable $e) {
     }
 

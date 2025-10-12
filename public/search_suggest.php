@@ -63,10 +63,24 @@ if ($q !== '' && mb_strlen($q) >= 2) {
     ];
   }
 
-  $userStmt = $pdo->prepare(
-    'SELECT username, profile_public FROM users WHERE username LIKE :uq ORDER BY username ASC LIMIT 8'
-  );
-  $userStmt->execute([':uq' => $q . '%']);
+  $userBoolean = build_fulltext_boolean_terms($q);
+  if ($userBoolean !== '') {
+    $userStmt = $pdo->prepare(
+      'SELECT username, profile_public,
+              MATCH(username) AGAINST(:boolean IN BOOLEAN MODE) AS relevance
+         FROM users
+        WHERE MATCH(username) AGAINST(:boolean IN BOOLEAN MODE)
+     ORDER BY relevance DESC, username ASC
+        LIMIT 8'
+    );
+    $userStmt->execute([':boolean' => $userBoolean]);
+  } else {
+    $userStmt = $pdo->prepare(
+      'SELECT username, profile_public FROM users WHERE username LIKE :uq ORDER BY username ASC LIMIT 8'
+    );
+    $userStmt->execute([':uq' => $q . '%']);
+  }
+
   foreach ($userStmt->fetchAll(PDO::FETCH_ASSOC) as $userRow) {
     $payload['users'][] = [
       'username' => $userRow['username'],

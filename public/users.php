@@ -7,10 +7,26 @@ $query = trim($_GET['q'] ?? '');
 $results = [];
 
 if ($query !== '') {
-    $like = '%' . $query . '%';
-    $stmt = $pdo->prepare('SELECT id, username, created_at, profile_public FROM users WHERE username LIKE ? ORDER BY username ASC LIMIT 50');
-    $stmt->execute([$like]);
-    $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $boolean = build_fulltext_boolean_terms($query);
+    if ($boolean !== '') {
+        $stmt = $pdo->prepare(
+            'SELECT id, username, created_at, profile_public,
+                    MATCH(username) AGAINST(:boolean IN BOOLEAN MODE) AS relevance
+               FROM users
+              WHERE MATCH(username) AGAINST(:boolean IN BOOLEAN MODE)
+           ORDER BY relevance DESC, username ASC
+              LIMIT 50'
+        );
+        $stmt->execute([':boolean' => $boolean]);
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    if (!$results) {
+        $like = '%' . $query . '%';
+        $stmt = $pdo->prepare('SELECT id, username, created_at, profile_public FROM users WHERE username LIKE ? ORDER BY username ASC LIMIT 50');
+        $stmt->execute([$like]);
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
 }
 
 include __DIR__ . '/partials/header.php';

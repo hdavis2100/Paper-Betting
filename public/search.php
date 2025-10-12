@@ -27,15 +27,31 @@ if ($q !== '') {
     $stmt->execute([':q' => $q]);
     $eventResults = $stmt->fetchAll();
 
-    $userStmt = $pdo->prepare('
-      SELECT id, username, created_at, profile_public
-      FROM users
-      WHERE username LIKE ?
+    $userBoolean = build_fulltext_boolean_terms($q);
+    if ($userBoolean !== '') {
+      $userStmt = $pdo->prepare('
+        SELECT id, username, created_at, profile_public,
+               MATCH(username) AGAINST(:boolean IN BOOLEAN MODE) AS relevance
+          FROM users
+         WHERE MATCH(username) AGAINST(:boolean IN BOOLEAN MODE)
+      ORDER BY relevance DESC, username ASC
+         LIMIT 50
+      ');
+      $userStmt->execute([':boolean' => $userBoolean]);
+      $userResults = $userStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    if (!$userResults) {
+      $userStmt = $pdo->prepare('
+        SELECT id, username, created_at, profile_public
+          FROM users
+         WHERE username LIKE ?
       ORDER BY username ASC
-      LIMIT 50
-    ');
-    $userStmt->execute(['%' . $q . '%']);
-    $userResults = $userStmt->fetchAll(PDO::FETCH_ASSOC);
+         LIMIT 50
+      ');
+      $userStmt->execute(['%' . $q . '%']);
+      $userResults = $userStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
   }
 }
 

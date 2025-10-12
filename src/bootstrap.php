@@ -120,6 +120,23 @@ function normalize_market(string $market): string
   return in_array($market, supported_markets(), true) ? $market : 'h2h';
 }
 
+function build_fulltext_boolean_terms(string $query): string
+{
+  $terms = preg_split('/\s+/u', trim($query), -1, PREG_SPLIT_NO_EMPTY);
+  $booleanTerms = [];
+
+  foreach ($terms as $term) {
+    $clean = preg_replace('/[^\p{L}\p{N}]/u', '', $term);
+    if ($clean === '') {
+      continue;
+    }
+
+    $booleanTerms[] = '+' . $clean . '*';
+  }
+
+  return implode(' ', $booleanTerms);
+}
+
 function fetch_user_stats(PDO $pdo, int $userId): array
 {
   $stmt = $pdo->prepare(
