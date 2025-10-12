@@ -78,13 +78,6 @@ $SPORTS_OVERRIDE = isset($cli['sports'])
   ? array_filter(array_map('trim', explode(',', $cli['sports'])))
   : null;
 
-/* ---------- Helpers ---------- */
-function table_exists(PDO $pdo, string $name): bool {
-  $stmt = $pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?");
-  $stmt->execute([$name]);
-  return (bool)$stmt->fetchColumn();
-}
-
 /* ---------- Prepare statements (idempotent upserts) ---------- */
 $canBookmakers = table_exists($pdo, 'bookmakers');
 $canMarkets    = table_exists($pdo, 'markets');
