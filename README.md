@@ -48,32 +48,13 @@ config keys yet. Existing bets are safe to keep: wager tickets store the
 decimal price that was used at placement time, so deleting non-preferred
 odds rows does not retroactively change or void previously placed bets.
 
-### Reducing catalog fetch costs
-
-`src/fetch_all_catalog.php` now keeps a small on-disk cache for the
-sports list and per-sport odds payloads. By default the responses are
-reused for ten minutes so repeated runs within that window do not spend
-additional TheOddsAPI requests. Control the behaviour with either a
-config entry or a CLI flag:
-
-```php
-// /var/www/secure_config/sportsbet_config.php
-return [
-    // ...
-    'catalog_cache_ttl_seconds' => 900,               // disable with 0
-    'catalog_cache_dir' => '/var/cache/sportsbet',    // optional location
-];
-```
-
-```bash
-php src/fetch_all_catalog.php cache_ttl=0             # force live fetches
-php src/fetch_all_catalog.php cache_ttl=60            # reuse results for 60s
-```
+### Tracking API usage
 
 Every script that talks to TheOddsAPI (`fetch_odds.php`,
-`fetch_all_catalog.php`, and `settle_bets1.php`) now prints the
+`fetch_all_catalog.php`, and `settle_bets1.php`) prints the
 `requests-used` and `requests-remaining` counters returned by the API so
-you can track the exact cost of each call while the job runs.
+you can monitor consumption on each run. The catalog fetcher always hits
+the live endpoints to ensure newly posted odds are imported right away.
 
 ## Removing unwanted markets
 
