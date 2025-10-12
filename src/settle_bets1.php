@@ -72,48 +72,87 @@ function normalize_team_label(string $name): string {
 }
 
 /**
- * The scores endpoint only returns the last ~3 days of data when queried by
- * daysFrom. When a completed event falls outside that window we attempt a
- * targeted fetch constrained to the event's commence time so historical fights
- * (e.g. older MMA bouts) can still be settled.
+ * Attempt to retrieve a single event's score record directly from TheOddsAPI.
+ *
+ * The API supports both `eventIds=` lookups and commence-time windows. We try
+ * the direct event-id query first because it returns settled fights well
+ * beyond the default 3-day window, which is crucial for combat sports that can
+ * fall off the bulk list quickly. If that fails (e.g. the provider hasn't
+ * indexed the id yet) we fall back to a commence-time bounded search.
  */
-function fetch_targeted_score(
+function fetch_event_score(
   string $sport,
   string $eventId,
   string $apiKey,
-  string $commenceTime
+  ?string $commenceTime
 ): ?array {
+  $base = sprintf('https://api.the-odds-api.com/v4/sports/%s/scores', rawurlencode($sport));
+
+  $directQuery = http_build_query([
+    'eventIds' => $eventId,
+    'dateFormat' => 'iso',
+    'apiKey' => $apiKey,
+  ], '', '&', PHP_QUERY_RFC3986);
+  $directUrl = $base . '?' . $directQuery;
+
+  $ch = curl_init($directUrl);
+  curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 25]);
+  $resp = curl_exec($ch);
+  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+  curl_close($ch);
+
+  if (!is_string($resp) || $code !== 200) {
+    debug_log(sprintf('[event:%s] direct eventIds lookup returned HTTP %d.', $eventId, $code));
+  } else {
+    $decoded = json_decode($resp, true);
+    if (is_array($decoded)) {
+      foreach ($decoded as $entry) {
+        if (is_array($entry) && ($entry['id'] ?? null) === $eventId) {
+          debug_log(sprintf('[event:%s] settled via direct eventIds lookup.', $eventId));
+          return $entry;
+        }
+      }
+    }
+    debug_log(sprintf('[event:%s] direct eventIds lookup did not include event.', $eventId));
+  }
+
+  if ($commenceTime === null) {
+    return null;
+  }
+
   try {
     $commence = new DateTimeImmutable($commenceTime, new DateTimeZone('UTC'));
   } catch (Exception $e) {
     return null;
   }
 
-  // Build a tight 48-hour window around the recorded commence time so the
-  // request stays small while covering possible schedule drift.
-  $from = $commence->sub(new DateInterval('P1D'))->format('c');
-  $to = $commence->add(new DateInterval('P1D'))->format('c');
+  // Expand to a +/- 3 day window to account for reschedules and late data
+  // publication (common with overseas MMA/boxing cards).
+  $from = $commence->sub(new DateInterval('P3D'))->format('c');
+  $to = $commence->add(new DateInterval('P3D'))->format('c');
 
-  $url = sprintf(
-    'https://api.the-odds-api.com/v4/sports/%s/scores?commenceTimeFrom=%s&commenceTimeTo=%s&dateFormat=iso&apiKey=%s',
-    rawurlencode($sport),
-    rawurlencode($from),
-    rawurlencode($to),
-    urlencode($apiKey)
-  );
+  $windowQuery = http_build_query([
+    'commenceTimeFrom' => $from,
+    'commenceTimeTo' => $to,
+    'dateFormat' => 'iso',
+    'apiKey' => $apiKey,
+  ], '', '&', PHP_QUERY_RFC3986);
+  $windowUrl = $base . '?' . $windowQuery;
 
-  $ch = curl_init($url);
+  $ch = curl_init($windowUrl);
   curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 25]);
   $resp = curl_exec($ch);
   $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
   curl_close($ch);
 
-  if ($resp === false || $code !== 200) {
+  if (!is_string($resp) || $code !== 200) {
+    debug_log(sprintf('[event:%s] commenceTime window lookup returned HTTP %d.', $eventId, $code));
     return null;
   }
 
   $decoded = json_decode($resp, true);
   if (!is_array($decoded)) {
+    debug_log(sprintf('[event:%s] commenceTime window lookup yielded invalid JSON.', $eventId));
     return null;
   }
 
@@ -122,10 +161,12 @@ function fetch_targeted_score(
       continue;
     }
     if (($entry['id'] ?? null) === $eventId) {
+      debug_log(sprintf('[event:%s] settled via commenceTime window lookup.', $eventId));
       return $entry;
     }
   }
 
+  debug_log(sprintf('[event:%s] commenceTime window lookup did not include event.', $eventId));
   return null;
 }
 
@@ -303,16 +344,16 @@ foreach ($bySport as $sport => $events) {
     $awaySlug = normalize_team_label($away);
 
     if (!isset($scoreMap[$eventId])) {
-      debug_log(sprintf('[event] %s missing from API response; attempting targeted lookup.', $eventId));
-      $fallback = fetch_targeted_score($sport, $eventId, $apiKey, (string)$ev['commence_time']);
+      debug_log(sprintf('[event] %s missing from API response; attempting direct fetch.', $eventId));
+      $fallback = fetch_event_score($sport, $eventId, $apiKey, $ev['commence_time'] ?? null);
       if ($fallback !== null) {
-        debug_log(sprintf('[event] %s retrieved via targeted commenceTime window.', $eventId));
+        debug_log(sprintf('[event] %s retrieved via dedicated event lookup.', $eventId));
         $scoreMap[$eventId] = $fallback;
       } else {
         if ($dumpScores) {
           echo "[{$sport}] Event {$eventId} not returned by scores API.\n";
         }
-        debug_log(sprintf('[event] %s still missing after targeted lookup; skipping settlement for now.', $eventId));
+        debug_log(sprintf('[event] %s still missing after dedicated lookup; skipping settlement for now.', $eventId));
         // No result yet; skip until next run
         continue;
       }
