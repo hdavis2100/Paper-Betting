@@ -43,8 +43,9 @@ include __DIR__ . '/partials/header.php';
 ?>
 <div class="container mt-3">
   <h1 class="h4 mb-3">Search Results for “<?= htmlspecialchars($q) ?>”</h1>
-  <form method="get" class="mb-3">
-    <input class="form-control" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Search users or events">
+  <form method="get" class="mb-3 position-relative" autocomplete="off">
+    <input class="form-control" id="search-input" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Search users or events">
+    <div id="search-suggestions" class="list-group position-absolute w-100 d-none" style="z-index: 1050;"></div>
   </form>
 
   <?php if ($q === ''): ?>
@@ -104,4 +105,108 @@ include __DIR__ . '/partials/header.php';
     <?php endif; ?>
   <?php endif; ?>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('search-input');
+  const box = document.getElementById('search-suggestions');
+  const form = input?.closest('form');
+  if (!input || !box || !form) {
+    return;
+  }
+
+  let controller = null;
+
+  const hideSuggestions = () => {
+    box.classList.add('d-none');
+    box.innerHTML = '';
+  };
+
+  const renderSuggestions = (data) => {
+    const items = [];
+
+    if (Array.isArray(data.events)) {
+      data.events.forEach((event) => {
+        const anchor = document.createElement('a');
+        anchor.className = 'list-group-item list-group-item-action';
+        anchor.href = `/sportsbet/public/bet.php?event_id=${encodeURIComponent(event.event_id)}`;
+        const title = document.createElement('div');
+        title.className = 'fw-semibold';
+        title.textContent = `${event.home_team} vs ${event.away_team}`;
+        const meta = document.createElement('div');
+        meta.className = 'small text-muted';
+        meta.textContent = `${event.commence_time_est} · ${event.sport_title}`;
+        anchor.appendChild(title);
+        anchor.appendChild(meta);
+        items.push(anchor);
+      });
+    }
+
+    if (Array.isArray(data.users)) {
+      data.users.forEach((user) => {
+        const anchor = document.createElement('a');
+        anchor.className = 'list-group-item list-group-item-action';
+        anchor.href = `/sportsbet/public/user_profile.php?username=${encodeURIComponent(user.username)}`;
+        const name = document.createElement('div');
+        name.className = 'fw-semibold';
+        name.textContent = user.username;
+        const visibility = document.createElement('div');
+        visibility.className = 'small text-muted';
+        visibility.textContent = user.public ? 'Public profile' : 'Private profile';
+        anchor.appendChild(name);
+        anchor.appendChild(visibility);
+        items.push(anchor);
+      });
+    }
+
+    if (items.length === 0) {
+      hideSuggestions();
+      return;
+    }
+
+    box.innerHTML = '';
+    items.forEach((item) => box.appendChild(item));
+    box.classList.remove('d-none');
+  };
+
+  const fetchSuggestions = async (query) => {
+    if (controller) {
+      controller.abort();
+    }
+    controller = new AbortController();
+    try {
+      const response = await fetch(`/sportsbet/public/search_suggest.php?q=${encodeURIComponent(query)}`, {
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error('Request failed');
+      }
+      const data = await response.json();
+      renderSuggestions(data);
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        hideSuggestions();
+      }
+    }
+  };
+
+  input.addEventListener('input', (event) => {
+    const query = event.target.value.trim();
+    if (query.length < 2) {
+      hideSuggestions();
+      return;
+    }
+    fetchSuggestions(query);
+  });
+
+  form.addEventListener('submit', () => {
+    hideSuggestions();
+  });
+
+  document.addEventListener('click', (evt) => {
+    if (!form.contains(evt.target)) {
+      hideSuggestions();
+    }
+  });
+});
+</script>
 <?php include __DIR__ . '/partials/footer.php'; ?>
