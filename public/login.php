@@ -17,7 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($u && password_verify($pass, $u['password_hash'])) {
       $_SESSION['user'] = ['id' => (int)$u['id'], 'username' => $u['username'], 'email' => $u['email']];
-      header('Location: /sportsbet/public/index.php');
+      header('Location: ' . app_url('index.php'));
       exit;
     } else {
       $errors[] = 'Invalid credentials.';
@@ -41,7 +41,7 @@ include __DIR__ . '/partials/header.php';
     <button type="submit">Login</button>
   </form>
 
-  <p>No account? <a href="/sportsbet/public/register.php">Create one</a></p>
+  <p>No account? <a href="<?= app_url('register.php') ?>">Create one</a></p>
 </body>
 </html>
 <?php include __DIR__ . '/partials/footer.php'; ?>

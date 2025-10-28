@@ -7,7 +7,7 @@ $sport  = trim($_GET['sport']  ?? '');
 $market = trim($_GET['market'] ?? '');
 
 if ($sport === '' || $market === '') {
-  header('Location: /sportsbet/public/sports.php'); exit;
+  header('Location: ' . app_url('sports.php')); exit;
 }
 
 // Pull upcoming events for this sport
@@ -35,13 +35,13 @@ include __DIR__ . '/partials/header.php';
   <div>
     <h1 class="h4 mb-0">Browse — <?= htmlspecialchars($sport) ?> / <?= htmlspecialchars($market) ?></h1>
     <div class="small text-muted">
-      <a href="/sportsbet/public/sports.php">Sports</a> →
-      <a href="/sportsbet/public/markets.php?sport=<?= urlencode($sport) ?>">Markets</a> →
+      <a href="<?= app_url('sports.php') ?>">Sports</a> →
+      <a href="<?= app_url('markets.php?sport=' . urlencode($sport)) ?>">Markets</a> →
       <span><?= htmlspecialchars($market) ?></span>
     </div>
   </div>
   <div>
-    <a class="btn btn-outline-secondary btn-sm" href="/sportsbet/public/markets.php?sport=<?= urlencode($sport) ?>">Back to markets</a>
+    <a class="btn btn-outline-secondary btn-sm" href="<?= app_url('markets.php?sport=' . urlencode($sport)) ?>">Back to markets</a>
   </div>
 </div>
 
@@ -94,7 +94,7 @@ include __DIR__ . '/partials/header.php';
                   <?= htmlspecialchars(number_format((float)$bestHome['price'], 2)) ?>
                   <small class="text-muted">(<?= htmlspecialchars($bestHome['bookmaker']) ?>)</small>
                   <a class="btn btn-sm btn-outline-primary ms-2"
-                     href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($ev['home_team']) ?>">
+                     href="<?= app_url('bet.php?event_id=' . urlencode($ev['event_id']) . '&outcome=' . urlencode($ev['home_team'])) ?>">
                     Bet home
                   </a>
                 <?php else: ?> — <?php endif; ?>
@@ -104,7 +104,7 @@ include __DIR__ . '/partials/header.php';
                   <?= htmlspecialchars(number_format((float)$bestAway['price'], 2)) ?>
                   <small class="text-muted">(<?= htmlspecialchars($bestAway['bookmaker']) ?>)</small>
                   <a class="btn btn-sm btn-outline-primary ms-2"
-                     href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($ev['away_team']) ?>">
+                     href="<?= app_url('bet.php?event_id=' . urlencode($ev['event_id']) . '&outcome=' . urlencode($ev['away_team'])) ?>">
                     Bet away
                   </a>
                 <?php else: ?> — <?php endif; ?>
@@ -118,7 +118,7 @@ include __DIR__ . '/partials/header.php';
                         <?= htmlspecialchars($t['outcome']) ?> — <?= htmlspecialchars(number_format((float)$t['price'], 2)) ?>
                         <small class="text-muted">(<?= htmlspecialchars($t['bookmaker']) ?>)</small>
                         <a class="btn btn-sm btn-outline-primary ms-2"
-                           href="/sportsbet/public/bet.php?event_id=<?= urlencode($ev['event_id']) ?>&outcome=<?= urlencode($t['outcome']) ?>">
+                           href="<?= app_url('bet.php?event_id=' . urlencode($ev['event_id']) . '&outcome=' . urlencode($t['outcome'])) ?>">
                           Bet
                         </a>
                       </li>

@@ -130,10 +130,10 @@ if ($eventId !== '') {
 </head>
 <body>
   <nav>
-    <a href="/sportsbet/public/index.php">Home</a> |
-    <a href="/sportsbet/public/events.php">Events</a> |
-    <a href="/sportsbet/public/my_bets.php">My Bets</a> |
-    <a href="/sportsbet/public/logout.php">Logout</a>
+    <a href="<?= app_url('index.php') ?>">Home</a> |
+    <a href="<?= app_url('events.php') ?>">Events</a> |
+    <a href="<?= app_url('my_bets.php') ?>">My Bets</a> |
+    <a href="<?= app_url('logout.php') ?>">Logout</a>
   </nav>
 
   <h1>Place Bet</h1>
@@ -146,14 +146,14 @@ if ($eventId !== '') {
   <?php endif; ?>
 
   <?php if (!$event): ?>
-    <p>Select a bet from the <a href="/sportsbet/public/events.php">Events</a> list.</p>
+    <p>Select a bet from the <a href="<?= app_url('events.php') ?>">Events</a> list.</p>
   <?php else: ?>
     <p><strong><?= htmlspecialchars($event['home_team']) ?> vs <?= htmlspecialchars($event['away_team']) ?></strong></p>
     <p>Kickoff: <?= htmlspecialchars($event['commence_time']) ?></p>
     <p>Best H2H — Home: <?= $homeBest ? htmlspecialchars(number_format((float)$homeBest,2)) : '—' ?>,
        Away: <?= $awayBest ? htmlspecialchars(number_format((float)$awayBest,2)) : '—' ?></p>
 
-    <form method="post" action="/sportsbet/public/bet.php">
+    <form method="post" action="<?= app_url('bet.php') ?>">
       <input type="hidden" name="event_id" value="<?= htmlspecialchars($event['event_id']) ?>">
       <label>
         Outcome

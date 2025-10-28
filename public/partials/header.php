@@ -16,7 +16,7 @@ if ($headerUser) {
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Sportsbet</title>
+  <title>Betleague</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- Bootstrap 5 -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -30,20 +30,20 @@ if ($headerUser) {
 <body>
 <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
   <div class="container">
-    <a class="navbar-brand" href="/sportsbet/public/index.php">Sportsbet</a>
+    <a class="navbar-brand" href="<?= app_url('index.php') ?>">Betleague</a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
       <span class="navbar-toggler-icon"></span>
     </button>
     <div id="mainNav" class="collapse navbar-collapse">
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
         <?php if ($headerUser): ?>
-          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/sports.php">Sports</a></li>
-          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/events.php">Events</a></li>
-          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/my_bets.php">My Bets</a></li>
-          <li class="nav-item"><a class="nav-link" href="/sportsbet/public/leaderboard.php">Leaderboard</a></li>
+          <li class="nav-item"><a class="nav-link" href="<?= app_url('sports.php') ?>">Sports</a></li>
+          <li class="nav-item"><a class="nav-link" href="<?= app_url('events.php') ?>">Events</a></li>
+          <li class="nav-item"><a class="nav-link" href="<?= app_url('my_bets.php') ?>">My Bets</a></li>
+          <li class="nav-item"><a class="nav-link" href="<?= app_url('leaderboard.php') ?>">Leaderboard</a></li>
         <?php endif; ?>
       </ul>
-        <form class="d-flex position-relative" role="search" action="/sportsbet/public/search.php" method="get">
+        <form class="d-flex position-relative" role="search" action="<?= app_url('search.php') ?>" method="get">
         <input class="form-control me-2" type="search" placeholder="Search teams..." id="search-box" name="q" autocomplete="off">
         <ul id="suggestions" class="list-group position-absolute" style="top:100%;z-index:1000;width:100%;"></ul>
         </form>
@@ -52,17 +52,19 @@ if ($headerUser) {
         let timer;
         const box = document.getElementById('search-box');
         const list = document.getElementById('suggestions');
+        const suggestEndpoint = <?= json_encode(app_url('search_suggest.php')) ?>;
+        const betBase = <?= json_encode(app_url('bet.php')) ?>;
         if (box) {
         box.addEventListener('input', () => {
             clearTimeout(timer);
             const q = box.value.trim();
             if (q.length < 2) { list.innerHTML = ''; return; }
             timer = setTimeout(async () => {
-            const res = await fetch(`/sportsbet/public/search_suggest.php?q=${encodeURIComponent(q)}`);
+            const res = await fetch(`${suggestEndpoint}?q=${encodeURIComponent(q)}`);
             const data = await res.json();
             list.innerHTML = data.map(r =>
                 `<li class="list-group-item">
-                <a href="/sportsbet/public/bet.php?event_id=${r.event_id}">
+                <a href="${betBase}?event_id=${encodeURIComponent(r.event_id)}">
                     ${r.home_team} vs ${r.away_team}
                 </a>
                 </li>`
@@ -85,9 +87,9 @@ if ($headerUser) {
               <?php endif; ?>
             </span>
           </li>
-          <li class="nav-item"><a class="btn btn-outline-secondary btn-sm" href="/sportsbet/public/logout.php">Logout</a></li>
+          <li class="nav-item"><a class="btn btn-outline-secondary btn-sm" href="<?= app_url('logout.php') ?>">Logout</a></li>
         <?php else: ?>
-          <li class="nav-item"><a class="btn btn-primary btn-sm" href="/sportsbet/public/login.php">Login</a></li>
+          <li class="nav-item"><a class="btn btn-primary btn-sm" href="<?= app_url('login.php') ?>">Login</a></li>
         <?php endif; ?>
       </ul>
     </div>

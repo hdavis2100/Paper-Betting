@@ -31,7 +31,7 @@ include __DIR__ . '/partials/header.php';
             <div class="mt-auto d-flex align-items-center justify-content-between">
               <span class="badge bg-secondary"><?= (int)$r['upcoming_count'] ?> upcoming</span>
               <a class="btn btn-sm btn-primary"
-                 href="/sportsbet/public/markets.php?sport=<?= urlencode($r['sport_key']) ?>">
+                 href="<?= app_url('markets.php?sport=' . urlencode($r['sport_key'])) ?>">
                 View markets
               </a>
             </div>

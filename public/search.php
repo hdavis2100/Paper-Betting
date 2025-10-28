@@ -40,7 +40,7 @@ include __DIR__ . '/partials/header.php';
               <td><?= htmlspecialchars($r['home_team']) ?> vs <?= htmlspecialchars($r['away_team']) ?></td>
               <td><?= htmlspecialchars($r['sport_key']) ?></td>
               <td><a class="btn btn-sm btn-outline-primary"
-                     href="/sportsbet/public/bet.php?event_id=<?= urlencode($r['event_id']) ?>">Bet</a></td>
+                     href="<?= app_url('bet.php?event_id=' . urlencode($r['event_id'])) ?>">Bet</a></td>
             </tr>
           <?php endforeach; ?>
           </tbody>
