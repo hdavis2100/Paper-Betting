@@ -2,11 +2,11 @@
 declare(strict_types=1);
 
 /**
- *  * Creates a PDO instance in $pdo using /var/www/secure_config/sportsbet_config.php
+ *  * Creates a PDO instance in $pdo using /var/www/secure_config/betleague_config.php
  *   * Usage: require __DIR__ . '/db.php';  // then use $pdo
  *    */
 
-$config = require '/var/www/secure_config/sportsbet_config.php';
+$config = require '/var/www/secure_config/betleague_config.php';
 
 $dsn = sprintf(
 	  'mysql:host=%s;port=%d;dbname=%s;charset=%s',

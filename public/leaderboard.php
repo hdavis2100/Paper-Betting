@@ -27,7 +27,7 @@ FROM users u
 JOIN wallets w ON w.user_id = u.id
 LEFT JOIN bets b ON b.user_id = u.id
 GROUP BY u.id, u.username, w.balance
-ORDER BY w.balance DESC, net_profit DESC, bets_count DESC
+ORDER BY net_profit DESC, w.balance DESC, bets_count DESC
 LIMIT 50
 ";
 $leaders = $pdo->query($sql)->fetchAll();
