@@ -5,7 +5,7 @@ require_login();
 
 $sport = trim($_GET['sport'] ?? '');
 if ($sport === '') {
-  header('Location: /sportsbet/public/sports.php'); exit;
+  header('Location: ' . app_url('sports.php')); exit;
 }
 
 // Markets available for this sport (from odds joined to events)
@@ -30,7 +30,7 @@ include __DIR__ . '/partials/header.php';
 ?>
 <div class="d-flex align-items-center justify-content-between mb-3">
   <h1 class="h4 mb-0">Markets — <?= htmlspecialchars($title) ?></h1>
-  <a class="btn btn-outline-secondary btn-sm" href="/sportsbet/public/sports.php">All sports</a>
+  <a class="btn btn-outline-secondary btn-sm" href="<?= app_url('sports.php') ?>">All sports</a>
 </div>
 
 <?php if (!$markets): ?>
@@ -39,7 +39,7 @@ include __DIR__ . '/partials/header.php';
   <div class="list-group">
     <?php foreach ($markets as $m): ?>
       <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
-         href="/sportsbet/public/browse.php?sport=<?= urlencode($sport) ?>&market=<?= urlencode($m['market']) ?>">
+         href="<?= app_url('browse.php?sport=' . urlencode($sport) . '&market=' . urlencode($m['market'])) ?>">
         <span><?= htmlspecialchars($m['market']) ?></span>
         <span class="badge bg-secondary"><?= (int)$m['event_count'] ?> events</span>
       </a>
