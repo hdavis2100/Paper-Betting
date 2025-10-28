@@ -3,32 +3,76 @@ declare(strict_types=1);
 
 /**
  * Usage:
- *   php /var/www/html/sportsbet/src/fetch_odds.php
- *   php /var/www/html/sportsbet/src/fetch_odds.php basketball_nba,americanfootball_nfl
+ *   php /var/www/html/betleague/src/fetch_odds.php
+ *   php /var/www/html/betleague/src/fetch_odds.php basketball_nba,americanfootball_nfl
  *
- * Requires: curl, TheOddsAPI key in /var/www/secure_config/sportsbet_config.php
+ * Requires: curl, TheOddsAPI key in /var/www/secure_config/betleague_config.php
  */
 
 require __DIR__ . '/db.php';
+require __DIR__ . '/schema.php';
+require __DIR__ . '/tracking.php';
+require __DIR__ . '/http.php';
 
-$config = require '/var/www/secure_config/sportsbet_config.php';
+ensure_app_schema($pdo);
+
+$config = require '/var/www/secure_config/betleague_config.php';
 $apiKey = $config['odds_api_key'] ?? '';
 if ($apiKey === '') {
   fwrite(STDERR, "Missing odds_api_key in secure config.\n");
   exit(1);
 }
 
+$preferredBookmakerKey   = trim((string)($config['preferred_bookmaker_key']   ?? '')) ?: null;
+$preferredBookmakerTitle = trim((string)($config['preferred_bookmaker_title'] ?? '')) ?: null;
+$preferredBookmakerLabel = trim((string)($config['preferred_bookmaker_label'] ?? '')) ?: null;
+
 /** Region/markets config (adjust as you like) */
 const REGION  = 'uk';          // 'us','uk','eu','au'
 const MARKETS = 'h2h';         // 'h2h,spreads,totals' etc.
 
+const BLOCKED_MARKETS = ['h2h_lay'];
+
 /** Sports to fetch (edit this list). CLI can override with comma-separated list. */
 $defaultSports = ['soccer_epl', 'basketball_nba', 'americanfootball_nfl'];
-if (!empty($argv[1])) {
-  $sports = array_filter(array_map('trim', explode(',', $argv[1])));
-} else {
-  $sports = $defaultSports;
+$sports = $defaultSports;
+
+$firstArgConsumed = false;
+for ($i = 1; $i < $argc; $i++) {
+  $arg = $argv[$i];
+
+  if (!$firstArgConsumed && strpos($arg, '=') === false) {
+    $sports = array_filter(array_map('trim', explode(',', $arg)));
+    $firstArgConsumed = true;
+    continue;
+  }
+
+  if (strpos($arg, '=') === false) {
+    continue;
+  }
+
+  [$key, $value] = explode('=', $arg, 2);
+  $key = strtolower(trim($key));
+  $value = trim($value);
+
+  switch ($key) {
+    case 'sports':
+      $sports = array_filter(array_map('trim', explode(',', $value)));
+      break;
+    case 'bookmaker':
+    case 'bookmaker_key':
+      $preferredBookmakerKey = $value !== '' ? $value : null;
+      break;
+    case 'bookmaker_title':
+      $preferredBookmakerTitle = $value !== '' ? $value : null;
+      break;
+    case 'bookmaker_label':
+      $preferredBookmakerLabel = $value !== '' ? $value : null;
+      break;
+  }
 }
+
+$bookmakerFilterActive = $preferredBookmakerKey !== null || $preferredBookmakerTitle !== null;
 
 $insEvent = $pdo->prepare(
   "INSERT INTO events (event_id, sport_key, commence_time, home_team, away_team, status)
@@ -43,8 +87,8 @@ $insEvent = $pdo->prepare(
 $delOdds = $pdo->prepare("DELETE FROM odds WHERE event_id = ?");
 
 $insOdds = $pdo->prepare(
-  "INSERT INTO odds (event_id, bookmaker, market, outcome, price)
-   VALUES (:event_id, :bookmaker, :market, :outcome, :price)"
+  "INSERT INTO odds (event_id, bookmaker, market, outcome, price, line)
+   VALUES (:event_id, :bookmaker, :market, :outcome, :price, :line)"
 );
 
 $totalEvents = 0;
@@ -56,19 +100,12 @@ foreach ($sports as $sportKey) {
     urlencode($sportKey), urlencode(REGION), urlencode(MARKETS), urlencode($apiKey)
   );
 
-  $ch = curl_init($url);
-  curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_TIMEOUT => 25,
-  ]);
-  $resp = curl_exec($ch);
-  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-  $err  = curl_error($ch);
-  curl_close($ch);
+  [$code, $resp, $headers, $err] = oddsapi_request($url, 'odds:' . $sportKey, [CURLOPT_TIMEOUT => 25]);
 
-  if ($resp === false || $code !== 200) {
-    // Don’t abort the whole run; move to next sport.
-    fwrite(STDERR, "[{$sportKey}] Fetch failed: HTTP {$code} {$err}\nResponse: {$resp}\n");
+  if ($resp === null || $code !== 200) {
+    $remain = $headers['x-requests-remaining'] ?? $headers['requests-remaining'] ?? 'n/a';
+    $used   = $headers['x-requests-used']      ?? $headers['requests-used']      ?? 'n/a';
+    fwrite(STDERR, "[{$sportKey}] Fetch failed: HTTP {$code} " . ($err ?? '') . " | remaining={$remain} used={$used}\nResponse: " . substr((string)$resp, 0, 300) . "\n");
     continue;
   }
 
@@ -104,27 +141,67 @@ foreach ($sports as $sportKey) {
     $delOdds->execute([$eventId]);
 
     if (!empty($event['bookmakers'])) {
+      $matchedPreferred = false;
       foreach ($event['bookmakers'] as $bk) {
-        $bookmaker = $bk['title'] ?? ($bk['key'] ?? 'unknown');
+        $bkKey   = $bk['key']   ?? '';
+        $bkTitle = $bk['title'] ?? ($bkKey ?: 'unknown');
+
+        if ($bookmakerFilterActive) {
+          if ($preferredBookmakerKey !== null) {
+            if ($bkKey !== $preferredBookmakerKey) {
+              continue;
+            }
+          } elseif ($preferredBookmakerTitle !== null) {
+            if (strcasecmp($bkTitle, $preferredBookmakerTitle) !== 0) {
+              continue;
+            }
+          }
+        }
+
+        $matchedPreferred = true;
+        $bookmakerLabel = $bkTitle;
+        if ($bookmakerFilterActive) {
+          if ($preferredBookmakerLabel !== null) {
+            $bookmakerLabel = $preferredBookmakerLabel;
+          } elseif ($preferredBookmakerTitle !== null) {
+            $bookmakerLabel = $preferredBookmakerTitle;
+          }
+        }
+
         if (empty($bk['markets'])) continue;
         foreach ($bk['markets'] as $m) {
           $market = $m['key'] ?? 'unknown';
+          if (in_array($market, BLOCKED_MARKETS, true)) {
+            continue;
+          }
           if (empty($m['outcomes'])) continue;
           foreach ($m['outcomes'] as $o) {
             $name  = $o['name']  ?? '';
             $price = isset($o['price']) ? (float)$o['price'] : null;
             if ($name === '' || $price === null) continue;
 
+            $line = null;
+            if (array_key_exists('point', $o) && $o['point'] !== null && $o['point'] !== '') {
+              if (is_numeric($o['point'])) {
+                $line = (float)$o['point'];
+              }
+            }
+
             $insOdds->execute([
               ':event_id'  => $eventId,
-              ':bookmaker' => $bookmaker,
+              ':bookmaker' => $bookmakerLabel,
               ':market'    => $market,
               ':outcome'   => $name,
               ':price'     => $price,
+              ':line'      => $line,
             ]);
+            record_tracked_notifications($pdo, $eventId, $market, $name, $line, $price, $bookmakerLabel);
             $countOdds++;
           }
         }
+      }
+      if ($bookmakerFilterActive && !$matchedPreferred) {
+        fwrite(STDERR, "[{$sportKey}] No odds from preferred bookmaker for event {$eventId}\n");
       }
     }
   }
