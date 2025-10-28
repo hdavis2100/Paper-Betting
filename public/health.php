@@ -14,7 +14,7 @@ require $path;
 if (!isset($pdo) || !$pdo instanceof PDO) {
 	  http_response_code(500);
 	    header('Content-Type: text/plain');
-	    echo "\$pdo is not set. Check src/db.php and /var/www/secure_config/sportsbet_config.php.\n";
+	    echo "\$pdo is not set. Check src/db.php and /var/www/secure_config/betleague_config.php.\n";
 	      exit;
 }
 
