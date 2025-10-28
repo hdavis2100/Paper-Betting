@@ -3,10 +3,10 @@ declare(strict_types=1);
 
 /**
  * Usage:
- *   php /var/www/html/sportsbet/src/fetch_odds.php
- *   php /var/www/html/sportsbet/src/fetch_odds.php basketball_nba,americanfootball_nfl
+ *   php /var/www/html/betleague/src/fetch_odds.php
+ *   php /var/www/html/betleague/src/fetch_odds.php basketball_nba,americanfootball_nfl
  *
- * Requires: curl, TheOddsAPI key in /var/www/secure_config/sportsbet_config.php
+ * Requires: curl, TheOddsAPI key in /var/www/secure_config/betleague_config.php
  */
 
 require __DIR__ . '/db.php';
@@ -16,7 +16,7 @@ require __DIR__ . '/http.php';
 
 ensure_app_schema($pdo);
 
-$config = require '/var/www/secure_config/sportsbet_config.php';
+$config = require '/var/www/secure_config/betleague_config.php';
 $apiKey = $config['odds_api_key'] ?? '';
 if ($apiKey === '') {
   fwrite(STDERR, "Missing odds_api_key in secure config.\n");

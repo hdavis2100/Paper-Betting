@@ -5,7 +5,7 @@ require_login();
 
 $sport = trim($_GET['sport'] ?? '');
 if ($sport === '') {
-  header('Location: /sportsbet/public/sports.php');
+  header('Location: /betleague/public/sports.php');
   exit;
 }
 
@@ -40,12 +40,12 @@ include __DIR__ . '/partials/header.php';
   <div>
     <h1 class="h4 mb-0">Upcoming — <?= htmlspecialchars($sportTitle) ?></h1>
     <div class="small text-muted">
-      <a href="/sportsbet/public/sports.php">Sports</a> →
+      <a href="/betleague/public/sports.php">Sports</a> →
       <span><?= htmlspecialchars($sportTitle) ?></span>
     </div>
   </div>
   <div>
-    <a class="btn btn-outline-secondary btn-sm" href="/sportsbet/public/sports.php">All sports</a>
+    <a class="btn btn-outline-secondary btn-sm" href="/betleague/public/sports.php">All sports</a>
   </div>
 </div>
 
@@ -77,7 +77,7 @@ include __DIR__ . '/partials/header.php';
           <tr>
             <td><?= htmlspecialchars(format_est_datetime($ev['commence_time'])) ?></td>
             <td>
-              <a href="/sportsbet/public/bet.php?event_id=<?= urlencode($eventId) ?>" class="text-decoration-none">
+              <a href="/betleague/public/bet.php?event_id=<?= urlencode($eventId) ?>" class="text-decoration-none">
                 <?= htmlspecialchars($ev['home_team']) ?> vs <?= htmlspecialchars($ev['away_team']) ?>
               </a>
             </td>
@@ -102,7 +102,7 @@ include __DIR__ . '/partials/header.php';
               <?php endif; ?>
             </td>
             <td>
-              <a class="btn btn-sm btn-outline-primary" href="/sportsbet/public/bet.php?event_id=<?= urlencode($eventId) ?>">View markets</a>
+              <a class="btn btn-sm btn-outline-primary" href="/betleague/public/bet.php?event_id=<?= urlencode($eventId) ?>">View markets</a>
             </td>
           </tr>
         <?php endforeach; ?>

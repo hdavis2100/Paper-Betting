@@ -5,12 +5,12 @@ declare(strict_types=1);
  * Populate your catalog from TheOddsAPI.
  *
  * Usage:
- *   php /var/www/html/sportsbet/src/fetch_all_catalog.php
- *   php /var/www/html/sportsbet/src/fetch_all_catalog.php regions=us,uk markets=h2h,spreads,totals
- *   php /var/www/html/sportsbet/src/fetch_all_catalog.php sports=basketball_nba,americanfootball_nfl
+ *   php /var/www/html/betleague/src/fetch_all_catalog.php
+ *   php /var/www/html/betleague/src/fetch_all_catalog.php regions=us,uk markets=h2h,spreads,totals
+ *   php /var/www/html/betleague/src/fetch_all_catalog.php sports=basketball_nba,americanfootball_nfl
  *
  * Notes:
- * - Requires db.php and odds_api_key in /var/www/secure_config/sportsbet_config.php
+ * - Requires db.php and odds_api_key in /var/www/secure_config/betleague_config.php
  * - Skips inactive sports automatically.
  * - If `bookmakers` / `markets` tables do not exist, those inserts are silently skipped.
  */
@@ -22,10 +22,10 @@ require __DIR__ . '/http.php';
 
 ensure_app_schema($pdo);
 
-$config = require '/var/www/secure_config/sportsbet_config.php';
+$config = require '/var/www/secure_config/betleague_config.php';
 $apiKey = $config['odds_api_key'] ?? '';
 if ($apiKey === '') {
-  fwrite(STDERR, "ERROR: Missing odds_api_key in /var/www/secure_config/sportsbet_config.php\n");
+  fwrite(STDERR, "ERROR: Missing odds_api_key in /var/www/secure_config/betleague_config.php\n");
   exit(1);
 }
 

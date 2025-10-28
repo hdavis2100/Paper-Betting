@@ -90,7 +90,7 @@ include __DIR__ . '/partials/header.php';
                 ?>
                 <td><?= htmlspecialchars($sportTitle) ?></td>
                 <td><a class="btn btn-sm btn-outline-primary"
-                       href="/sportsbet/public/bet.php?event_id=<?= urlencode($r['event_id']) ?>">View Markets</a></td>
+                       href="/betleague/public/bet.php?event_id=<?= urlencode($r['event_id']) ?>">View Markets</a></td>
               </tr>
             <?php endforeach; ?>
             </tbody>
@@ -107,7 +107,7 @@ include __DIR__ . '/partials/header.php';
             <?php foreach ($userResults as $row): ?>
               <?php $isPublic = ((int)($row['profile_public'] ?? 1)) === 1; ?>
               <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
-                 href="/sportsbet/public/user_profile.php?username=<?= urlencode($row['username']) ?>">
+                 href="/betleague/public/user_profile.php?username=<?= urlencode($row['username']) ?>">
                 <div>
                   <div class="fw-semibold"><?= htmlspecialchars($row['username']) ?></div>
                   <small class="text-muted">Member Since <?= htmlspecialchars($row['created_at'] ? format_est_datetime($row['created_at']) : 'Unknown') ?></small>
@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', () => {
       data.events.forEach((event) => {
         const anchor = document.createElement('a');
         anchor.className = 'list-group-item list-group-item-action';
-        anchor.href = `/sportsbet/public/bet.php?event_id=${encodeURIComponent(event.event_id)}`;
+        anchor.href = `/betleague/public/bet.php?event_id=${encodeURIComponent(event.event_id)}`;
         const title = document.createElement('div');
         title.className = 'fw-semibold';
         title.textContent = `${event.home_team} vs ${event.away_team}`;
@@ -161,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
       data.users.forEach((user) => {
         const anchor = document.createElement('a');
         anchor.className = 'list-group-item list-group-item-action';
-        anchor.href = `/sportsbet/public/user_profile.php?username=${encodeURIComponent(user.username)}`;
+        anchor.href = `/betleague/public/user_profile.php?username=${encodeURIComponent(user.username)}`;
         const name = document.createElement('div');
         name.className = 'fw-semibold';
         name.textContent = user.username;
@@ -190,7 +190,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     controller = new AbortController();
     try {
-      const response = await fetch(`/sportsbet/public/search_suggest.php?q=${encodeURIComponent(query)}`, {
+      const response = await fetch(`/betleague/public/search_suggest.php?q=${encodeURIComponent(query)}`, {
         signal: controller.signal,
       });
       if (!response.ok) {

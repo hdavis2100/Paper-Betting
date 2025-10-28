@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->commit();
                 session_unset();
                 session_destroy();
-                header('Location: /sportsbet/public/register.php');
+                header('Location: /betleague/public/register.php');
                 exit;
             } catch (Throwable $e) {
                 if ($pdo->inTransaction()) {

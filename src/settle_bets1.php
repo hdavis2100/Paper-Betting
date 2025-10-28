@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /**
  * Usage:
- *   php /var/www/html/sportsbet/src/settle_bets.php
+ *   php /var/www/html/betleague/src/settle_bets.php
  *
  * Notes:
  * - Uses TheOddsAPI scores endpoint per sport over the last N days.
@@ -13,7 +13,7 @@ declare(strict_types=1);
 require __DIR__ . '/db.php';
 require __DIR__ . '/http.php';
 
-$config = require '/var/www/secure_config/sportsbet_config.php';
+$config = require '/var/www/secure_config/betleague_config.php';
 $apiKey = $config['odds_api_key'] ?? '';
 if ($apiKey === '') {
   fwrite(STDERR, "Missing odds_api_key in secure config.\n");

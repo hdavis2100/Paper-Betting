@@ -70,10 +70,10 @@ include __DIR__ . '/partials/header.php';
   <!-- Sport filter pills -->
   <div class="mt-2 mb-3">
     <a class="btn btn-sm <?= $selSport==='all' ? 'btn-primary' : 'btn-outline-secondary' ?>"
-       href="/sportsbet/public/events.php?sport=all">All</a>
+       href="/betleague/public/events.php?sport=all">All</a>
     <?php foreach ($MAJOR_SPORTS as $k => $label): ?>
       <a class="btn btn-sm <?= $selSport===$k ? 'btn-primary' : 'btn-outline-secondary' ?>"
-         href="/sportsbet/public/events.php?sport=<?= urlencode($k) ?>">
+         href="/betleague/public/events.php?sport=<?= urlencode($k) ?>">
         <?= htmlspecialchars($label) ?>
       </a>
     <?php endforeach; ?>
@@ -106,7 +106,7 @@ include __DIR__ . '/partials/header.php';
             <tr>
               <td><?= htmlspecialchars(format_est_datetime($r['commence_time'])) ?></td>
               <td>
-                <a href="/sportsbet/public/bet.php?event_id=<?= urlencode($eventId) ?>" class="text-decoration-none">
+                <a href="/betleague/public/bet.php?event_id=<?= urlencode($eventId) ?>" class="text-decoration-none">
                   <?= htmlspecialchars($r['home_team']) ?> vs <?= htmlspecialchars($r['away_team']) ?>
                 </a>
               </td>
@@ -133,7 +133,7 @@ include __DIR__ . '/partials/header.php';
               </td>
               <td>
                 <a class="btn btn-sm btn-outline-primary"
-                   href="/sportsbet/public/bet.php?event_id=<?= urlencode($eventId) ?>">
+                   href="/betleague/public/bet.php?event_id=<?= urlencode($eventId) ?>">
                   View markets
                 </a>
               </td>

@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/db.php';
 
-$config = require '/var/www/secure_config/sportsbet_config.php';
+$config = require '/var/www/secure_config/betleague_config.php';
 
 $preferredBookmakerKey   = trim((string)($config['preferred_bookmaker_key']   ?? '')) ?: null;
 $preferredBookmakerTitle = trim((string)($config['preferred_bookmaker_title'] ?? '')) ?: null;

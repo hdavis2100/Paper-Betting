@@ -9,5 +9,5 @@ if (ini_get('session.use_cookies')) {
 }
 session_destroy();
 
-header('Location: /sportsbet/public/login.php');
+header('Location: /betleague/public/login.php');
 exit;

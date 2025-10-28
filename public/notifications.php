@@ -9,14 +9,14 @@ $userId = (int) $user['id'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['mark_all'])) {
         mark_all_notifications_read($pdo, $userId);
-        header('Location: /sportsbet/public/notifications.php');
+        header('Location: /betleague/public/notifications.php');
         exit;
     }
 
     if (isset($_POST['mark_read'], $_POST['notification_id'])) {
         $notificationId = (int) $_POST['notification_id'];
         mark_notification_read($pdo, $userId, $notificationId);
-        header('Location: /sportsbet/public/notifications.php');
+        header('Location: /betleague/public/notifications.php');
         exit;
     }
 }
@@ -57,7 +57,7 @@ include __DIR__ . '/partials/header.php';
             <?php
               $isRead = $note['read_at'] !== null;
               $created = format_est_datetime($note['created_at']);
-              $targetUrl = '/sportsbet/public/bet.php?event_id=' . urlencode((string) $note['event_id']);
+              $targetUrl = '/betleague/public/bet.php?event_id=' . urlencode((string) $note['event_id']);
             ?>
             <tr class="<?= $isRead ? '' : 'table-warning' ?>">
               <td><?= htmlspecialchars($created) ?></td>

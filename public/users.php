@@ -59,7 +59,7 @@ include __DIR__ . '/partials/header.php';
           <div class="list-group list-group-flush">
             <?php foreach ($results as $row): ?>
               <?php $isPublic = ((int)($row['profile_public'] ?? 1)) === 1; ?>
-              <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="/sportsbet/public/user_profile.php?username=<?= urlencode($row['username']) ?>">
+              <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="/betleague/public/user_profile.php?username=<?= urlencode($row['username']) ?>">
                 <div>
                   <div class="fw-semibold"><?= htmlspecialchars($row['username']) ?></div>
                   <small class="text-muted">Member Since <?= htmlspecialchars($row['created_at'] ? format_est_datetime($row['created_at']) : 'Unknown') ?></small>

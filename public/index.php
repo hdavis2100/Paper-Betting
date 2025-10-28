@@ -69,8 +69,8 @@ $netProfitClass = $netProfit > 0 ? 'text-success' : ($netProfit < 0 ? 'text-dang
     <div class="text-end">
       <span class="badge bg-secondary align-self-start d-inline-block mb-2"><?= htmlspecialchars($visibility) ?></span>
       <div>
-        <a class="btn btn-sm btn-outline-primary" href="/sportsbet/public/tracked.php">Tracked events</a>
-        <a class="btn btn-sm btn-outline-secondary ms-2" href="/sportsbet/public/notifications.php">Notifications</a>
+        <a class="btn btn-sm btn-outline-primary" href="/betleague/public/tracked.php">Tracked events</a>
+        <a class="btn btn-sm btn-outline-secondary ms-2" href="/betleague/public/notifications.php">Notifications</a>
       </div>
     </div>
   </div>
@@ -137,7 +137,7 @@ $netProfitClass = $netProfit > 0 ? 'text-success' : ($netProfit < 0 ? 'text-dang
   <div class="card shadow-sm">
     <div class="card-body">
       <h2 class="h5 mb-3">Recent activity</h2>
-      <p class="text-muted mb-0">View your <a href="/sportsbet/public/my_bets.php">bet history</a> for detailed tickets and settlement results.</p>
+      <p class="text-muted mb-0">View your <a href="/betleague/public/my_bets.php">bet history</a> for detailed tickets and settlement results.</p>
     </div>
   </div>
 

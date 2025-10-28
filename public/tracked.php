@@ -9,7 +9,7 @@ $userId = (int) $user['id'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_id'])) {
     $deleteId = (int) $_POST['delete_id'];
     delete_tracked_item($pdo, $userId, $deleteId);
-    header('Location: /sportsbet/public/tracked.php');
+    header('Location: /betleague/public/tracked.php');
     exit;
 }
 
@@ -44,7 +44,7 @@ include __DIR__ . '/partials/header.php';
           <?php foreach ($trackedItems as $item): ?>
             <?php
               $eventId = (string) $item['event_id'];
-              $eventUrl = '/sportsbet/public/bet.php?event_id=' . urlencode($eventId);
+              $eventUrl = '/betleague/public/bet.php?event_id=' . urlencode($eventId);
               $line = isset($item['line']) ? (float) $item['line'] : null;
               $targetDecimal = isset($item['target_price']) ? (float) $item['target_price'] : null;
               $targetAmerican = $targetDecimal ? decimal_to_american_odds($targetDecimal) : '—';

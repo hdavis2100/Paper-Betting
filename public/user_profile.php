@@ -5,7 +5,7 @@ require_login();
 
 $username = trim($_GET['username'] ?? '');
 if ($username === '') {
-    header('Location: /sportsbet/public/users.php');
+    header('Location: /betleague/public/users.php');
     exit;
 }
 

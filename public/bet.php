@@ -434,7 +434,7 @@ include __DIR__ . '/partials/header.php';
         <?php endif; ?>
 
         <?php if (!$event): ?>
-          <p>Select an event from the <a href="/sportsbet/public/events.php">events list</a> to get started.</p>
+          <p>Select an event from the <a href="/betleague/public/events.php">events list</a> to get started.</p>
         <?php else: ?>
           <div class="mb-3">
             <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
