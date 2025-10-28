@@ -30,7 +30,7 @@ if ($headerUser) {
 <body>
 <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
   <div class="container">
-    <a class="navbar-brand" href="/betleague/public/index.php">Betleague</a>
+    <a class="navbar-brand" href="/sportsbet/public/index.php">Betleague</a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
       <span class="navbar-toggler-icon"></span>
     </button>
