@@ -47,4 +47,5 @@ include __DIR__ . '/partials/header.php';
   </div>
 <?php endif; ?>
 
-<?php include __DIR__ . '/partials/footer.php'; ?>
+header('Location: ' . $target, true, 302);
+exit;

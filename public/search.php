@@ -4,30 +4,72 @@ require __DIR__ . '/../src/bootstrap.php';
 require_login();
 
 $q = trim($_GET['q'] ?? '');
-$results = [];
+$eventResults = [];
+$userResults = [];
+$minQueryLength = 2;
+$tooShort = false;
 
-if ($q !== '' && mb_strlen($q) >= 2) {
-  $stmt = $pdo->prepare("
-    SELECT e.event_id, e.sport_key, e.home_team, e.away_team, e.commence_time,
-           MATCH(e.home_team, e.away_team) AGAINST(:q IN NATURAL LANGUAGE MODE) AS score
-    FROM events e
-    WHERE MATCH(e.home_team, e.away_team) AGAINST(:q IN NATURAL LANGUAGE MODE)
-    ORDER BY score DESC, e.commence_time ASC
-    LIMIT 100
-  ");
-  $stmt->execute([':q'=>$q]);
-  $results = $stmt->fetchAll();
+if ($q !== '') {
+  if (mb_strlen($q) < $minQueryLength) {
+    $tooShort = true;
+  } else {
+    $stmt = $pdo->prepare("
+      SELECT e.event_id, e.sport_key, e.home_team, e.away_team, e.commence_time,
+             s.title AS sport_title,
+             MATCH(e.home_team, e.away_team) AGAINST(:q IN NATURAL LANGUAGE MODE) AS score
+      FROM events e
+      LEFT JOIN sports s ON s.sport_key = e.sport_key
+      WHERE MATCH(e.home_team, e.away_team) AGAINST(:q IN NATURAL LANGUAGE MODE)
+        AND e.commence_time >= UTC_TIMESTAMP()
+      ORDER BY score DESC, e.commence_time ASC
+      LIMIT 100
+    ");
+    $stmt->execute([':q' => $q]);
+    $eventResults = $stmt->fetchAll();
+
+    $userBoolean = build_fulltext_boolean_terms($q);
+    if ($userBoolean !== '') {
+      $userStmt = $pdo->prepare('
+        SELECT id, username, created_at, profile_public,
+               MATCH(username) AGAINST(:boolean IN BOOLEAN MODE) AS relevance
+          FROM users
+         WHERE MATCH(username) AGAINST(:boolean IN BOOLEAN MODE)
+      ORDER BY relevance DESC, username ASC
+         LIMIT 50
+      ');
+      $userStmt->execute([':boolean' => $userBoolean]);
+      $userResults = $userStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    if (!$userResults) {
+      $userStmt = $pdo->prepare('
+        SELECT id, username, created_at, profile_public
+          FROM users
+         WHERE username LIKE ?
+      ORDER BY username ASC
+         LIMIT 50
+      ');
+      $userStmt->execute(['%' . $q . '%']);
+      $userResults = $userStmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+  }
 }
 
 include __DIR__ . '/partials/header.php';
 ?>
 <div class="container mt-3">
-  <h1 class="h4 mb-3">Search results for “<?= htmlspecialchars($q) ?>”</h1>
-  <form method="get" class="mb-3">
-    <input class="form-control" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Search teams">
+  <h1 class="h4 mb-3">Search Results for “<?= htmlspecialchars($q) ?>”</h1>
+  <form method="get" class="mb-3 position-relative" autocomplete="off">
+    <input class="form-control" id="search-input" name="q" value="<?= htmlspecialchars($q) ?>" placeholder="Search users or events">
+    <div id="search-suggestions" class="list-group position-absolute w-100 d-none" style="z-index: 1050;"></div>
   </form>
-  <?php if (!$results): ?>
-    <div class="alert alert-info">No results found.</div>
+
+  <?php if ($q === ''): ?>
+    <div class="alert alert-info">Enter at least <?= $minQueryLength ?> characters to search events or users.</div>
+  <?php elseif ($tooShort): ?>
+    <div class="alert alert-warning">Please enter at least <?= $minQueryLength ?> characters to search.</div>
+  <?php elseif (!$eventResults && !$userResults): ?>
+    <div class="alert alert-info">No events or users matched “<?= htmlspecialchars($q) ?>”.</div>
   <?php else: ?>
     <div class="card shadow-sm">
       <div class="card-body p-0">
@@ -46,7 +88,132 @@ include __DIR__ . '/partials/header.php';
           </tbody>
         </table>
       </div>
-    </div>
+    <?php endif; ?>
+
+    <?php if ($userResults): ?>
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Users</h2>
+          <div class="list-group list-group-flush">
+            <?php foreach ($userResults as $row): ?>
+              <?php $isPublic = ((int)($row['profile_public'] ?? 1)) === 1; ?>
+              <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+                 href="/betleague/public/user_profile.php?username=<?= urlencode($row['username']) ?>">
+                <div>
+                  <div class="fw-semibold"><?= htmlspecialchars($row['username']) ?></div>
+                  <small class="text-muted">Member Since <?= htmlspecialchars($row['created_at'] ? format_est_datetime($row['created_at']) : 'Unknown') ?></small>
+                </div>
+                <span class="badge <?= $isPublic ? 'bg-success' : 'bg-secondary' ?>"><?= $isPublic ? 'Public' : 'Private' ?></span>
+              </a>
+            <?php endforeach; ?>
+          </div>
+        </div>
+      </div>
+    <?php endif; ?>
   <?php endif; ?>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('search-input');
+  const box = document.getElementById('search-suggestions');
+  const form = input?.closest('form');
+  if (!input || !box || !form) {
+    return;
+  }
+
+  let controller = null;
+
+  const hideSuggestions = () => {
+    box.classList.add('d-none');
+    box.innerHTML = '';
+  };
+
+  const renderSuggestions = (data) => {
+    const items = [];
+
+    if (Array.isArray(data.events)) {
+      data.events.forEach((event) => {
+        const anchor = document.createElement('a');
+        anchor.className = 'list-group-item list-group-item-action';
+        anchor.href = `/betleague/public/bet.php?event_id=${encodeURIComponent(event.event_id)}`;
+        const title = document.createElement('div');
+        title.className = 'fw-semibold';
+        title.textContent = `${event.home_team} vs ${event.away_team}`;
+        const meta = document.createElement('div');
+        meta.className = 'small text-muted';
+        meta.textContent = `${event.commence_time_est} · ${event.sport_title}`;
+        anchor.appendChild(title);
+        anchor.appendChild(meta);
+        items.push(anchor);
+      });
+    }
+
+    if (Array.isArray(data.users)) {
+      data.users.forEach((user) => {
+        const anchor = document.createElement('a');
+        anchor.className = 'list-group-item list-group-item-action';
+        anchor.href = `/betleague/public/user_profile.php?username=${encodeURIComponent(user.username)}`;
+        const name = document.createElement('div');
+        name.className = 'fw-semibold';
+        name.textContent = user.username;
+        const visibility = document.createElement('div');
+        visibility.className = 'small text-muted';
+        visibility.textContent = user.public ? 'Public profile' : 'Private profile';
+        anchor.appendChild(name);
+        anchor.appendChild(visibility);
+        items.push(anchor);
+      });
+    }
+
+    if (items.length === 0) {
+      hideSuggestions();
+      return;
+    }
+
+    box.innerHTML = '';
+    items.forEach((item) => box.appendChild(item));
+    box.classList.remove('d-none');
+  };
+
+  const fetchSuggestions = async (query) => {
+    if (controller) {
+      controller.abort();
+    }
+    controller = new AbortController();
+    try {
+      const response = await fetch(`/betleague/public/search_suggest.php?q=${encodeURIComponent(query)}`, {
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error('Request failed');
+      }
+      const data = await response.json();
+      renderSuggestions(data);
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        hideSuggestions();
+      }
+    }
+  };
+
+  input.addEventListener('input', (event) => {
+    const query = event.target.value.trim();
+    if (query.length < 2) {
+      hideSuggestions();
+      return;
+    }
+    fetchSuggestions(query);
+  });
+
+  form.addEventListener('submit', () => {
+    hideSuggestions();
+  });
+
+  document.addEventListener('click', (evt) => {
+    if (!form.contains(evt.target)) {
+      hideSuggestions();
+    }
+  });
+});
+</script>
 <?php include __DIR__ . '/partials/footer.php'; ?>
