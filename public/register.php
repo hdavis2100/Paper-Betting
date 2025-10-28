@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       // Log in
       $_SESSION['user'] = ['id' => $userId, 'username' => $username, 'email' => $email];
 
-      header('Location: /betleague/public/index.php');
+      header('Location: ' . app_url('index.php'));
       exit;
     } catch (PDOException $e) {
       $pdo->rollBack();
@@ -70,7 +70,7 @@ include __DIR__ . '/partials/header.php';
     <button type="submit">Register</button>
   </form>
 
-  <p>Already have an account? <a href="/betleague/public/login.php">Log in</a></p>
+  <p>Already have an account? <a href="<?= app_url('login.php') ?>">Log in</a></p>
 </body>
 </html>
 <?php include __DIR__ . '/partials/footer.php'; ?>

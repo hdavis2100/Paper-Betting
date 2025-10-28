@@ -9,5 +9,5 @@ if (ini_get('session.use_cookies')) {
 }
 session_destroy();
 
-header('Location: /betleague/public/login.php');
+header('Location: ' . app_url('login.php'));
 exit;

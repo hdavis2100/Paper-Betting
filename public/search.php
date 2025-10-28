@@ -71,31 +71,22 @@ include __DIR__ . '/partials/header.php';
   <?php elseif (!$eventResults && !$userResults): ?>
     <div class="alert alert-info">No events or users matched “<?= htmlspecialchars($q) ?>”.</div>
   <?php else: ?>
-    <?php if ($eventResults): ?>
-      <div class="card shadow-sm mb-4">
-        <div class="card-body p-0">
-          <div class="px-3 pt-3"><h2 class="h5">Events</h2></div>
-          <table class="table mb-0">
-            <thead><tr><th>Commence (ET)</th><th>Match</th><th>Sport</th><th></th></tr></thead>
-            <tbody>
-            <?php foreach ($eventResults as $r): ?>
-              <tr>
-                <td><?= htmlspecialchars(format_est_datetime($r['commence_time'])) ?></td>
-                <td><?= htmlspecialchars($r['home_team']) ?> vs <?= htmlspecialchars($r['away_team']) ?></td>
-                <?php
-                  $sportTitle = trim((string)($r['sport_title'] ?? ''));
-                  if ($sportTitle === '') {
-                    $sportTitle = ucwords(str_replace('_', ' ', $r['sport_key']));
-                  }
-                ?>
-                <td><?= htmlspecialchars($sportTitle) ?></td>
-                <td><a class="btn btn-sm btn-outline-primary"
-                       href="/betleague/public/bet.php?event_id=<?= urlencode($r['event_id']) ?>">View Markets</a></td>
-              </tr>
-            <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
+    <div class="card shadow-sm">
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead><tr><th>Commence</th><th>Match</th><th>Sport</th><th></th></tr></thead>
+          <tbody>
+          <?php foreach ($results as $r): ?>
+            <tr>
+              <td><?= htmlspecialchars($r['commence_time']) ?></td>
+              <td><?= htmlspecialchars($r['home_team']) ?> vs <?= htmlspecialchars($r['away_team']) ?></td>
+              <td><?= htmlspecialchars($r['sport_key']) ?></td>
+              <td><a class="btn btn-sm btn-outline-primary"
+                     href="<?= app_url('bet.php?event_id=' . urlencode($r['event_id'])) ?>">Bet</a></td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
       </div>
     <?php endif; ?>
 

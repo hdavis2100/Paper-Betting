@@ -12,11 +12,8 @@ if ($sport === '') {
 $limitParam = isset($_GET['limit']) ? (int) $_GET['limit'] : 200;
 $limit = max(1, min(200, $limitParam));
 
-$titleStmt = $pdo->prepare('SELECT title FROM sports WHERE sport_key = ? LIMIT 1');
-$titleStmt->execute([$sport]);
-$sportTitle = trim((string) ($titleStmt->fetchColumn() ?? ''));
-if ($sportTitle === '') {
-  $sportTitle = ucwords(str_replace('_', ' ', $sport));
+if ($sport === '' || $market === '') {
+  header('Location: ' . app_url('sports.php')); exit;
 }
 
 $eventsStmt = $pdo->prepare('
@@ -40,12 +37,13 @@ include __DIR__ . '/partials/header.php';
   <div>
     <h1 class="h4 mb-0">Upcoming — <?= htmlspecialchars($sportTitle) ?></h1>
     <div class="small text-muted">
-      <a href="/betleague/public/sports.php">Sports</a> →
-      <span><?= htmlspecialchars($sportTitle) ?></span>
+      <a href="<?= app_url('sports.php') ?>">Sports</a> →
+      <a href="<?= app_url('markets.php?sport=' . urlencode($sport)) ?>">Markets</a> →
+      <span><?= htmlspecialchars($market) ?></span>
     </div>
   </div>
   <div>
-    <a class="btn btn-outline-secondary btn-sm" href="/betleague/public/sports.php">All sports</a>
+    <a class="btn btn-outline-secondary btn-sm" href="<?= app_url('markets.php?sport=' . urlencode($sport)) ?>">Back to markets</a>
   </div>
 </div>
 
@@ -75,27 +73,47 @@ include __DIR__ . '/partials/header.php';
             $awayOdds = $snapshot['away'] ?? null;
           ?>
           <tr>
-            <td><?= htmlspecialchars(format_est_datetime($ev['commence_time'])) ?></td>
-            <td>
-              <a href="/betleague/public/bet.php?event_id=<?= urlencode($eventId) ?>" class="text-decoration-none">
-                <?= htmlspecialchars($ev['home_team']) ?> vs <?= htmlspecialchars($ev['away_team']) ?>
-              </a>
-            </td>
-            <td>
-              <?php if ($homeOdds): ?>
-                <?= htmlspecialchars(format_american_odds($homeOdds['price'])) ?>
-                <?php if ($homeOdds['bookmaker'] !== ''): ?>
-                  <small class="text-muted">(<?= htmlspecialchars($homeOdds['bookmaker']) ?>)</small>
-                <?php endif; ?>
-              <?php else: ?>
-                <span class="text-muted">—</span>
-              <?php endif; ?>
-            </td>
-            <td>
-              <?php if ($awayOdds): ?>
-                <?= htmlspecialchars(format_american_odds($awayOdds['price'])) ?>
-                <?php if ($awayOdds['bookmaker'] !== ''): ?>
-                  <small class="text-muted">(<?= htmlspecialchars($awayOdds['bookmaker']) ?>)</small>
+            <td><?= htmlspecialchars($ev['commence_time']) ?></td>
+            <td><?= htmlspecialchars($ev['home_team']) ?> vs <?= htmlspecialchars($ev['away_team']) ?></td>
+
+            <?php if ($market === 'h2h'): ?>
+              <td>
+                <?php if ($bestHome): ?>
+                  <?= htmlspecialchars(number_format((float)$bestHome['price'], 2)) ?>
+                  <small class="text-muted">(<?= htmlspecialchars($bestHome['bookmaker']) ?>)</small>
+                  <a class="btn btn-sm btn-outline-primary ms-2"
+                     href="<?= app_url('bet.php?event_id=' . urlencode($ev['event_id']) . '&outcome=' . urlencode($ev['home_team'])) ?>">
+                    Bet home
+                  </a>
+                <?php else: ?> — <?php endif; ?>
+              </td>
+              <td>
+                <?php if ($bestAway): ?>
+                  <?= htmlspecialchars(number_format((float)$bestAway['price'], 2)) ?>
+                  <small class="text-muted">(<?= htmlspecialchars($bestAway['bookmaker']) ?>)</small>
+                  <a class="btn btn-sm btn-outline-primary ms-2"
+                     href="<?= app_url('bet.php?event_id=' . urlencode($ev['event_id']) . '&outcome=' . urlencode($ev['away_team'])) ?>">
+                    Bet away
+                  </a>
+                <?php else: ?> — <?php endif; ?>
+              </td>
+            <?php else: ?>
+              <td>
+                <?php if (!empty($top)): ?>
+                  <ul class="mb-0">
+                    <?php foreach ($top as $t): ?>
+                      <li>
+                        <?= htmlspecialchars($t['outcome']) ?> — <?= htmlspecialchars(number_format((float)$t['price'], 2)) ?>
+                        <small class="text-muted">(<?= htmlspecialchars($t['bookmaker']) ?>)</small>
+                        <a class="btn btn-sm btn-outline-primary ms-2"
+                           href="<?= app_url('bet.php?event_id=' . urlencode($ev['event_id']) . '&outcome=' . urlencode($t['outcome'])) ?>">
+                          Bet
+                        </a>
+                      </li>
+                    <?php endforeach; ?>
+                  </ul>
+                <?php else: ?>
+                  —
                 <?php endif; ?>
               <?php else: ?>
                 <span class="text-muted">—</span>

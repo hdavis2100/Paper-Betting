@@ -415,51 +415,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 include __DIR__ . '/partials/header.php';
 ?>
-<div class="row">
-  <div class="col-lg-8">
-    <div class="card shadow-sm mb-3">
-      <div class="card-body">
-        <h1 class="h4 mb-3">Place Bet</h1>
-        <?php foreach ($errors as $err): ?>
-          <div class="alert alert-danger"><?= htmlspecialchars($err) ?></div>
-        <?php endforeach; ?>
-        <?php if ($success): ?>
-          <div class="alert alert-success"><?= htmlspecialchars($success) ?></div>
-        <?php endif; ?>
-        <?php foreach ($trackErrors as $err): ?>
-          <div class="alert alert-warning"><?= htmlspecialchars($err) ?></div>
-        <?php endforeach; ?>
-        <?php if ($trackSuccess): ?>
-          <div class="alert alert-info"><?= htmlspecialchars($trackSuccess) ?></div>
-        <?php endif; ?>
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Place Bet</title>
+  <style>
+    label { display:block; margin: 6px 0; }
+    .msg { padding:8px; margin: 8px 0; border:1px solid #ccc; }
+    .err { color:#b00; }
+    .ok  { color:#070; }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="<?= app_url('index.php') ?>">Home</a> |
+    <a href="<?= app_url('events.php') ?>">Events</a> |
+    <a href="<?= app_url('my_bets.php') ?>">My Bets</a> |
+    <a href="<?= app_url('logout.php') ?>">Logout</a>
+  </nav>
 
-        <?php if (!$event): ?>
-          <p>Select an event from the <a href="/betleague/public/events.php">events list</a> to get started.</p>
-        <?php else: ?>
-          <div class="mb-3">
-            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
-              <div>
-                <h2 class="h5 mb-1"><?= htmlspecialchars($event['home_team']) ?> vs <?= htmlspecialchars($event['away_team']) ?></h2>
-                <div class="text-muted">Kickoff (ET): <?= htmlspecialchars(format_est_datetime($event['commence_time'])) ?></div>
-              </div>
-              <div>
-                <form method="get" class="d-flex align-items-center gap-2">
-                  <input type="hidden" name="event_id" value="<?= htmlspecialchars($event['event_id']) ?>">
-                  <label class="form-label mb-0" for="market">Market</label>
-                  <select class="form-select form-select-sm" id="market" name="market" onchange="this.form.submit()">
-                    <?php foreach ($availableMarkets as $m): ?>
-                      <option value="<?= htmlspecialchars(strtolower($m)) ?>" <?php if (strtolower($m) === $marketLower) echo 'selected'; ?>>
-                        <?= htmlspecialchars(format_market_label($m)) ?>
-                      </option>
-                    <?php endforeach; ?>
-                  </select>
-                </form>
-              </div>
-            </div>
-          </div>
+  <h1>Place Bet</h1>
 
-          <?php if ($bettingClosed): ?>
-            <div class="alert alert-warning">Betting is closed for this event (already started).</div>
+  <?php foreach ($errors as $err): ?>
+    <div class="msg err"><?= htmlspecialchars($err) ?></div>
+  <?php endforeach; ?>
+  <?php if ($success): ?>
+    <div class="msg ok"><?= htmlspecialchars($success) ?></div>
+  <?php endif; ?>
+
+  <?php if (!$event): ?>
+    <p>Select a bet from the <a href="<?= app_url('events.php') ?>">Events</a> list.</p>
+  <?php else: ?>
+    <p><strong><?= htmlspecialchars($event['home_team']) ?> vs <?= htmlspecialchars($event['away_team']) ?></strong></p>
+    <p>Kickoff: <?= htmlspecialchars($event['commence_time']) ?></p>
+    <p>Best H2H — Home: <?= $homeBest ? htmlspecialchars(number_format((float)$homeBest,2)) : '—' ?>,
+       Away: <?= $awayBest ? htmlspecialchars(number_format((float)$awayBest,2)) : '—' ?></p>
+
+    <form method="post" action="<?= app_url('bet.php') ?>">
+      <input type="hidden" name="event_id" value="<?= htmlspecialchars($event['event_id']) ?>">
+      <label>
+        Outcome
+        <select name="outcome" required>
+          <?php if ($homeBest): ?>
+            <option value="<?= htmlspecialchars($event['home_team']) ?>" <?php if ($outcomeParam===$event['home_team']) echo 'selected'; ?>>
+              <?= htmlspecialchars($event['home_team']) ?> (<?= htmlspecialchars(number_format((float)$homeBest,2)) ?>)
+            </option>
           <?php endif; ?>
 
           <?php if (empty($selectionOptions)): ?>

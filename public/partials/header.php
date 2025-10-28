@@ -30,19 +30,52 @@ if ($headerUser) {
 <body>
 <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
   <div class="container">
-    <a class="navbar-brand" href="/sportsbet/public/index.php">Betleague</a>
+    <a class="navbar-brand" href="<?= app_url('index.php') ?>">Betleague</a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
       <span class="navbar-toggler-icon"></span>
     </button>
-      <div id="mainNav" class="collapse navbar-collapse">
-        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-          <?php if ($headerUser): ?>
-            <li class="nav-item"><a class="nav-link" href="/betleague/public/sports.php">Sports</a></li>
-            <li class="nav-item"><a class="nav-link" href="/betleague/public/events.php">Events</a></li>
-            <li class="nav-item"><a class="nav-link" href="/betleague/public/leaderboard.php">Leaderboard</a></li>
-            <li class="nav-item"><a class="nav-link" href="/betleague/public/search.php">Search</a></li>
-          <?php endif; ?>
-        </ul>
+    <div id="mainNav" class="collapse navbar-collapse">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <?php if ($headerUser): ?>
+          <li class="nav-item"><a class="nav-link" href="<?= app_url('sports.php') ?>">Sports</a></li>
+          <li class="nav-item"><a class="nav-link" href="<?= app_url('events.php') ?>">Events</a></li>
+          <li class="nav-item"><a class="nav-link" href="<?= app_url('my_bets.php') ?>">My Bets</a></li>
+          <li class="nav-item"><a class="nav-link" href="<?= app_url('leaderboard.php') ?>">Leaderboard</a></li>
+        <?php endif; ?>
+      </ul>
+        <form class="d-flex position-relative" role="search" action="<?= app_url('search.php') ?>" method="get">
+        <input class="form-control me-2" type="search" placeholder="Search teams..." id="search-box" name="q" autocomplete="off">
+        <ul id="suggestions" class="list-group position-absolute" style="top:100%;z-index:1000;width:100%;"></ul>
+        </form>
+
+        <script>
+        let timer;
+        const box = document.getElementById('search-box');
+        const list = document.getElementById('suggestions');
+        const suggestEndpoint = <?= json_encode(app_url('search_suggest.php')) ?>;
+        const betBase = <?= json_encode(app_url('bet.php')) ?>;
+        if (box) {
+        box.addEventListener('input', () => {
+            clearTimeout(timer);
+            const q = box.value.trim();
+            if (q.length < 2) { list.innerHTML = ''; return; }
+            timer = setTimeout(async () => {
+            const res = await fetch(`${suggestEndpoint}?q=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            list.innerHTML = data.map(r =>
+                `<li class="list-group-item">
+                <a href="${betBase}?event_id=${encodeURIComponent(r.event_id)}">
+                    ${r.home_team} vs ${r.away_team}
+                </a>
+                </li>`
+            ).join('');
+            }, 200);
+        });
+        document.addEventListener('click', e => {
+            if (!list.contains(e.target) && e.target !== box) list.innerHTML = '';
+        });
+        }
+        </script>
 
         <?php if ($headerUser): ?>
           <ul class="navbar-nav ms-auto mb-2 mb-lg-0 align-items-lg-center">
@@ -53,22 +86,11 @@ if ($headerUser) {
               <?php if ($headerUnreadNotifications > 0): ?>
                 <span class="badge text-bg-danger ms-1"><?= (int) $headerUnreadNotifications ?></span>
               <?php endif; ?>
-            </a></li>
-            <li class="nav-item"><a class="nav-link" href="/betleague/public/settings.php">Settings</a></li>
-            <li class="nav-item">
-              <span class="navbar-text ms-lg-3 me-lg-2">
-                Hello, <strong><?= htmlspecialchars($headerUser['username']) ?></strong>
-                <?php if ($headerBalance !== null): ?>
-                  &nbsp;|&nbsp; Balance: <strong><?= number_format($headerBalance, 2) ?></strong>
-                <?php endif; ?>
-              </span>
-            </li>
-            <li class="nav-item"><a class="btn btn-outline-secondary btn-sm" href="/betleague/public/logout.php">Logout</a></li>
-          </ul>
+            </span>
+          </li>
+          <li class="nav-item"><a class="btn btn-outline-secondary btn-sm" href="<?= app_url('logout.php') ?>">Logout</a></li>
         <?php else: ?>
-          <ul class="navbar-nav ms-auto">
-            <li class="nav-item"><a class="btn btn-primary btn-sm" href="/betleague/public/login.php">Login</a></li>
-          </ul>
+          <li class="nav-item"><a class="btn btn-primary btn-sm" href="<?= app_url('login.php') ?>">Login</a></li>
         <?php endif; ?>
       </div>
   </div>
