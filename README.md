@@ -1,7 +1,8 @@
 # Betleague
 
 Betleague is a PHP/MySQL web application that simulates a real-money sportsbook. It ingests live odds from [TheOddsAPI](https://theoddsapi.com/), lets users place wagers with virtual currency, and tracks results with full wallet accounting, notifications, and analytics.
-**Link:** BetLeagueSports.com
+
+**Link:** https://BetLeagueSports.com
 
 **Demo Login (For recruiters, employers, or anyone interested):** Username=demouser, Password=demouser
 
