@@ -6,56 +6,120 @@ Betleague is a PHP/MySQL web application that simulates a real-money sportsbook.
 
 **Demo Login (For recruiters, employers, or anyone interested):** Username=demouser, Password=demouser
 
-## Features
+This is a hobby project I used to practice:
 
-- **Upcoming event hub** – Browse major sports, view moneyline snapshots, and drill into full event markets (moneyline, spreads, totals) with American-style odds formatting.
-- **Comprehensive bet flow** – Place wagers, monitor pending tickets, and settle results automatically from official score feeds.
-- **Account analytics** – Personal dashboards highlight bankroll, profit/loss, win rate, wager distribution, and profit-over-time charts.
-- **Social discovery** – Search for public users, inspect detailed profiles, and follow the global leaderboard ordered by net profit.
-- **Price tracking & notifications** – Create odds alerts, receive in-app notifications when thresholds are met, and manage tracked events from a dedicated page.
-- **Bookmaker controls** – Restrict imports to a preferred bookmaker, prune unwanted markets (such as `h2h_lay`), and monitor API usage per request.
-- **Self-maintaining schema** – Every entry point ensures required tables/columns exist so upgrades deploy without manual migrations.
+- Modeling betting data and account balances in a relational database
+- Talking to a third party API on a schedule
+- Building small admin style pages for analytics and search
 
-## Tech Stack
+---
 
-- **Backend:** PHP 8+, PDO (MySQL/MariaDB)
-- **Database:** MySQL/MariaDB (InnoDB tables with foreign keys and full-text search)
-- **Frontend:** Bootstrap 5, Chart.js, vanilla JS fetch/AJAX helpers
-- **Integrations:** TheOddsAPI for odds & scores
+## Main features
 
-## Product Highlights
+- **Upcoming events hub.** Browse major sports, see upcoming matchups, and drill into a single event to view current markets and prices.
+- **Paper betting flow.** Place bets with virtual currency, check open tickets, and watch them settle as scores come in.
+- **Wallet and history.** Each user has a wallet balance, transaction history, and a list of settled and unsettled bets.
+- **Basic analytics.** Personal dashboard shows bankroll, past profit and loss, and simple win or loss stats per user.
+- **Social view.** Public profiles and a leaderboard ordered by profit so users can compare results.
+- **Price tracking.** Track specific odds, set alert thresholds, and view a feed of price notifications.
+- **Self checking schema.** On each request the app makes sure the required tables, columns, and indexes exist so deployments do not depend on manual migrations.
 
-- **Live betting experience:** Odds refresh from TheOddsAPI so the moneyline, spread, and total markets mimic a production sportsbook.
-- **User-centric analytics:** Every account surfaces bankroll health, profit trends, and win/loss ratios with interactive visualizations.
-- **Social layer:** Public profiles, global leaderboards, and search/auto-complete enable friendly competition while respecting privacy settings.
-- **Actionable alerts:** Bettors can track specific price targets and receive notifications the moment a line moves into range.
+---
 
-## Architecture Snapshot
+## Tech stack
 
-| Layer | Responsibilities |
-| ----- | ---------------- |
-| Web UI (`public/`) | PHP-rendered pages styled with Bootstrap 5 and progressive enhancement via vanilla JavaScript/Chart.js. |
-| Application core (`src/bootstrap.php`) | Session wiring, dependency bootstrap, helper loading, and schema guard rails. |
-| Odds ingestion (`src/fetch_odds.php`, `src/fetch_all_catalog.php`) | Poll TheOddsAPI, normalize bookmaker data, and persist markets/outcomes. |
-| Settlement (`src/settle_bets1.php`) | Grades completed events, updates bet status, and books wallet transactions. |
-| Tracking & notifications (`src/tracking.php`) | Stores price alerts, records triggered notifications, and exposes helper utilities for the UI. |
+- **Language and runtime:** PHP 8, PDO
+- **Database:** MySQL or MariaDB
+- **Frontend:** Server rendered PHP templates using Bootstrap and a bit of vanilla JavaScript
+- **Charts:** Simple charts on the dashboard using Chart.js
+- **External API:** TheOddsAPI for odds and scores
 
-## Data Model
+---
 
-- **Users & wallets:** A `users` table manages credentials and profile privacy flags, paired with `wallets` and `wallet_transactions` for ledger accuracy.
-- **Events & odds:** The app stores upcoming fixtures (`events`) plus outcome-specific rows (`odds`) that include markets, prices, and optional lines.
-- **Bets:** Each wager records the user, market, outcome, stake, price, and settlement details (`status`, `actual_return`, timestamps).
-- **Engagement:** `tracked_odds` captures price alerts, while `notifications` logs alerts and other account messages.
+## Application structure
 
-## Key Workflows
+- `public/`  
+  HTTP entry points and pages such as:
+  - `index.php` user dashboard
+  - `events.php` upcoming events
+  - `bet.php` place a new bet
+  - `my_bets.php` bet history
+  - `leaderboard.php` public leaderboard
+  - `tracked.php` tracked odds
+  - `notifications.php` notifications feed
+  - `login.php`, `register.php`, `logout.php` auth pages
 
-- **Odds ingestion pipeline:** Periodic jobs poll TheOddsAPI, filter unwanted markets (`h2h_lay`), enforce bookmaker preferences, and upsert outcomes so the UI always reflects current lines.
-- **Settlement pass:** Completed events trigger score lookups with combat-sport fallbacks, ensuring moneyline, spread, and total bets settle accurately with wallet credit/debit tracking.
-- **Account insights:** Helper utilities aggregate lifetime stats and profit timelines so the dashboard can visualize performance without manual calculations.
-- **Search & discovery:** Full-text indexes power user lookup, while event queries prioritize upcoming fixtures to keep navigation focused on future action.
+- `src/`  
+  Core application code and scripts:
+  - `bootstrap.php` session setup, shared helpers, schema check
+  - `db.php` database connection using a secure config file
+  - `schema.php` helper functions that create or alter tables and indexes at runtime
+  - `tracking.php` odds conversion utilities and tracking helpers
+  - `http.php` wrapper for TheOddsAPI calls
+  - `fetch_all_catalog.php` import of sports, events, and markets from TheOddsAPI
+  - `fetch_odds.php` periodic odds refresh
+  - `settle_bets1.php` settlement pass that marks bets won or lost and updates wallets
+  - `prune_*.php` scripts used to clean up stale data
 
-## Operations Overview
+---
 
-- Schema updates are self-managed: every entry point runs `ensure_app_schema()` to add missing tables, columns, and indexes automatically.
-- Price alerts leverage `record_tracked_notifications()` to store in-app notices and provide a convenient hook for optional email delivery.
-- Odds API integrations log request consumption for visibility into usage quotas.
+## Data model
+
+The main tables are:
+
+- **users**  
+  Accounts and profile settings, including privacy flags for public profiles.
+
+- **wallets** and **wallet_transactions**  
+  Wallet balance per user and a ledger for every change to that balance. Bets and settlements go through this layer so the history is auditable.
+
+- **events**  
+  Upcoming and recent fixtures imported from TheOddsAPI. Each row tracks sport, teams, and kickoff time.
+
+- **odds**  
+  Market and outcome data per event, including bookmaker, market type, outcome, decimal odds and any line value.
+
+- **bets**  
+  Bets placed by users. Stores market, outcome, stake, potential return, current status, and timestamps.
+
+- **tracked_odds**  
+  User defined price alerts for particular event, market, and outcome combinations.
+
+- **notifications**  
+  Stored notifications for things like triggered price alerts or other account messages.
+
+Full text indexes are used in a few places to speed up user search and basic discovery.
+
+---
+
+## Odds and settlement workflow
+
+The app uses a couple of scripts and jobs to keep odds fresh and settle bets.
+
+1. **Catalog import**  
+   `src/fetch_all_catalog.php` pulls sports and events from TheOddsAPI and inserts or updates rows in the `events` table. It can be limited to certain sports, regions, or markets by CLI flags.
+
+2. **Odds refresh**  
+   `src/fetch_odds.php` fetches current odds for active events, filters out unwanted markets, and upserts into the `odds` table. It reuses the same schema helper so it can safely run as the database evolves.
+
+3. **Bet settlement**  
+   `src/settle_bets1.php` hits TheOddsAPI scores endpoint, figures out final results for recent events, and marks related bets as won, lost, or void. It credits or debits the user wallet through `wallet_transactions` so every change is recorded.
+
+4. **Pruning**  
+   The `prune_*` scripts remove stale odds and events to keep the database small and queries fast.
+
+5. **Tracking and alerts**  
+   Code in `tracking.php` and related helpers convert odds between decimal and American formats, record tracked odds, and store notifications when alerts trigger.
+
+---
+
+## Running the app locally
+
+The repository expects a small PHP config file that holds database and API credentials.
+
+1. **Create a config file**
+
+   By default `src/db.php` and the CLI scripts load:
+
+   ```php
+   /var/www/secure_config/sportsbet_config.php
