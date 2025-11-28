@@ -112,14 +112,3 @@ The app uses a couple of scripts and jobs to keep odds fresh and settle bets.
    Code in `tracking.php` and related helpers convert odds between decimal and American formats, record tracked odds, and store notifications when alerts trigger.
 
 ---
-
-## Running the app locally
-
-The repository expects a small PHP config file that holds database and API credentials.
-
-1. **Create a config file**
-
-   By default `src/db.php` and the CLI scripts load:
-
-   ```php
-   /var/www/secure_config/sportsbet_config.php
