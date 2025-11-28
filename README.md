@@ -112,3 +112,7 @@ The app uses a couple of scripts and jobs to keep odds fresh and settle bets.
    Code in `tracking.php` and related helpers convert odds between decimal and American formats, record tracked odds, and store notifications when alerts trigger.
 
 ---
+
+## Notes
+- This is a paper trading app only. All balances are virtual and there is no real money involved.
+- The goal of the project is to show end to end handling of external sports data, betting logic, and account state in a small codebase.
